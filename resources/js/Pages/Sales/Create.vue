@@ -1,0 +1,705 @@
+<script setup>
+import { ref, computed } from 'vue';
+import { Head, Link, useForm } from '@inertiajs/vue3';
+import AppLayout from '@/Layouts/AppLayout.vue';
+import CurrencyDisplay from '@/Components/CurrencyDisplay.vue';
+import SearchableSelect from '@/Components/SearchableSelect.vue';
+import BarcodeCameraModal from '@/Components/BarcodeCameraModal.vue';
+import { useBarcodeScanner } from '@/Composables/useBarcodeScanner';
+import { playScanSuccess, playScanError } from '@/Utils/sound';
+
+const props = defineProps({
+    customers: Array,
+    warehouses: Array,
+    products: Array,
+    financialAccounts: Array,
+    defaultWarehouseId: Number,
+    todayDate: String,
+});
+
+const defaultAccount = (props.financialAccounts || []).find(a => a.is_default) || props.financialAccounts?.[0];
+
+const accountOptions = computed(() => {
+    return (props.financialAccounts || []).map(acc => ({
+        value: acc.id,
+        label: acc.name,
+        sublabel: acc.type === 'cash'
+            ? `Balance: ৳${Number(acc.current_balance).toFixed(2)}`
+            : `${acc.institution_name} (${acc.account_number}) - Bal: ৳${Number(acc.current_balance).toFixed(2)}`,
+        group: acc.type === 'cash' ? 'Cash Registers' : (acc.type === 'bank' ? 'Bank Accounts' : 'MFS Wallets'),
+    }));
+});
+
+const form = useForm({
+    customer_mode: 'existing',
+    customer_id: '',
+    new_customer_name: '',
+    new_customer_phone: '',
+    new_customer_address: '',
+    new_customer_email: '',
+    warehouse_id: props.defaultWarehouseId || '',
+    order_date: props.todayDate || new Date().toISOString().slice(0, 10),
+    notes: '',
+    discount_amount: 0,
+    tax_rate: 0,
+    tax_amount: 0,
+    shipping_cost: 0,
+    paid_amount: 0,
+    financial_account_id: defaultAccount?.id || '',
+    payment_reference: '',
+    status: 'confirmed',
+    items: [
+        {
+            product_id: '',
+            quantity: 1,
+            unit_price: 0,
+            warranty_days: 0,
+        },
+    ],
+});
+
+function addItem() {
+    form.items.push({
+        product_id: '',
+        quantity: 1,
+        unit_price: 0,
+        warranty_days: 0,
+    });
+}
+
+function removeItem(index) {
+    if (form.items.length > 1) {
+        form.items.splice(index, 1);
+    }
+}
+
+// Barcode Scanning System (Hardware Laser Guns + Camera)
+const isCameraModalOpen = ref(false);
+const barcodeScanInput = ref('');
+const scanNotification = ref('');
+
+function handleBarcodeScanned(rawCode) {
+    if (!rawCode) return;
+    const code = rawCode.trim().toLowerCase();
+    if (!code) return;
+
+    const prod = (props.products || []).find(p => 
+        (p.barcode && p.barcode.toLowerCase() === code) ||
+        (p.sku && p.sku.toLowerCase() === code)
+    );
+
+    if (prod) {
+        const existingItem = form.items.find(it => Number(it.product_id) === prod.id);
+
+        if (existingItem) {
+            existingItem.quantity = (Number(existingItem.quantity) || 0) + 1;
+            scanNotification.value = `Increased quantity for "${prod.name}" to ${existingItem.quantity}.`;
+        } else {
+            if (form.items.length === 1 && !form.items[0].product_id) {
+                form.items[0].product_id = prod.id;
+                form.items[0].unit_price = parseFloat(prod.unit_price) || 0;
+                form.items[0].warranty_days = parseInt(prod.warranty_days) || 0;
+                form.items[0].quantity = 1;
+            } else {
+                form.items.push({
+                    product_id: prod.id,
+                    quantity: 1,
+                    unit_price: parseFloat(prod.unit_price) || 0,
+                    warranty_days: parseInt(prod.warranty_days) || 0,
+                });
+            }
+            scanNotification.value = `Added "${prod.name}" to order items.`;
+        }
+
+        playScanSuccess();
+        barcodeScanInput.value = '';
+
+        setTimeout(() => {
+            scanNotification.value = '';
+        }, 4000);
+        return;
+    }
+
+    playScanError();
+    scanNotification.value = `Product with barcode "${rawCode}" not found in catalog!`;
+    setTimeout(() => {
+        scanNotification.value = '';
+    }, 4000);
+}
+
+function handleBarcodeSubmit() {
+    if (barcodeScanInput.value.trim()) {
+        handleBarcodeScanned(barcodeScanInput.value.trim());
+    }
+}
+
+// Hardware Barcode Scanner listener (USB / Bluetooth / Wireless Gun)
+useBarcodeScanner({
+    onScan: (code) => {
+        handleBarcodeScanned(code);
+    },
+});
+
+function onProductSelected(index) {
+    const item = form.items[index];
+    const product = (props.products || []).find(p => p.id === parseInt(item.product_id));
+    if (product) {
+        item.unit_price = parseFloat(product.unit_price) || 0;
+        item.warranty_days = parseInt(product.warranty_days) || 0;
+    }
+}
+
+function getProductStock(productId, warehouseId) {
+    if (!productId) return { available: 0, onHand: 0, reserved: 0, hasStock: false };
+    const p = (props.products || []).find(prod => prod.id === Number(productId));
+    if (!p || !p.stock_levels) return { available: 0, onHand: 0, reserved: 0, hasStock: false };
+
+    if (warehouseId) {
+        const sl = p.stock_levels.find(s => Number(s.warehouse_id) === Number(warehouseId));
+        if (sl) {
+            const onHand = Number(sl.quantity) || 0;
+            const reserved = Number(sl.reserved_quantity) || 0;
+            const avail = Math.max(0, onHand - reserved);
+            return { available: avail, onHand, reserved, hasStock: avail > 0 };
+        }
+        return { available: 0, onHand: 0, reserved: 0, hasStock: false };
+    }
+
+    let onHand = 0;
+    let reserved = 0;
+    p.stock_levels.forEach(sl => {
+        onHand += (Number(sl.quantity) || 0);
+        reserved += (Number(sl.reserved_quantity) || 0);
+    });
+    const avail = Math.max(0, onHand - reserved);
+    return { available: avail, onHand, reserved, hasStock: avail > 0 };
+}
+
+const productSelectOptions = computed(() => {
+    const whId = form.warehouse_id;
+    return (props.products || []).map(p => {
+        const st = getProductStock(p.id, whId);
+        return {
+            ...p,
+            id: p.id,
+            name: p.name,
+            sku_stock: `${p.sku || 'No SKU'} • Stock: ${st.available} available`,
+        };
+    });
+});
+
+const subtotal = computed(() => {
+    return form.items.reduce((sum, item) => {
+        return sum + ((parseFloat(item.quantity) || 0) * (parseFloat(item.unit_price) || 0));
+    }, 0);
+});
+
+const taxAmount = computed(() => {
+    const base = Math.max(0, subtotal.value - (parseFloat(form.discount_amount) || 0));
+    const rate = parseFloat(form.tax_rate) || 0;
+    return parseFloat(((base * rate) / 100).toFixed(2));
+});
+
+const totalAmount = computed(() => {
+    const sub = subtotal.value;
+    const disc = parseFloat(form.discount_amount) || 0;
+    const tax = taxAmount.value;
+    const ship = parseFloat(form.shipping_cost) || 0;
+    return Math.max(0, sub - disc + tax + ship);
+});
+
+const dueAmount = computed(() => {
+    const total = totalAmount.value;
+    const paid = parseFloat(form.paid_amount) || 0;
+    return Math.max(0, total - paid);
+});
+
+function setFullPayment() {
+    form.paid_amount = totalAmount.value;
+}
+
+function submit() {
+    form.clearErrors();
+    form.tax_amount = taxAmount.value;
+
+    if (form.customer_mode === 'existing' && !form.customer_id) {
+        form.setError('customer_id', 'Please select a customer or switch to New Customer.');
+        return;
+    }
+
+    for (let i = 0; i < form.items.length; i++) {
+        if (!form.items[i].product_id) {
+            form.setError('items', `Please select a product for line item #${i + 1}.`);
+            return;
+        }
+        if ((parseFloat(form.items[i].quantity) || 0) <= 0) {
+            form.setError('items', `Quantity for line item #${i + 1} must be greater than zero.`);
+            return;
+        }
+    }
+
+    if (form.status === 'confirmed' && form.warehouse_id) {
+        for (let i = 0; i < form.items.length; i++) {
+            const it = form.items[i];
+            const stock = getProductStock(it.product_id, form.warehouse_id);
+            if (it.quantity > stock.available) {
+                const prod = (props.products || []).find(p => p.id === Number(it.product_id));
+                const prodName = prod ? prod.name : `Line item #${i + 1}`;
+                form.setError('items', `Cannot confirm order: '${prodName}' requested quantity (${it.quantity}) exceeds available stock (${stock.available}) in this warehouse. Please reduce quantity or save order as Draft.`);
+                return;
+            }
+        }
+    }
+
+    form.post(route('sales.store'));
+}
+</script>
+
+<template>
+    <AppLayout>
+        <Head title="New Outbound Sales Order & Invoice" />
+
+        <template #header>
+            <div class="flex items-center justify-between w-full">
+                <div class="flex items-center gap-3">
+                    <Link :href="route('sales.index')" class="p-1.5 rounded-xl hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition">
+                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                        </svg>
+                    </Link>
+                    <div>
+                        <h1 class="text-xl font-extrabold text-slate-900 tracking-tight">New Outbound Sales Order & Invoice</h1>
+                    </div>
+                </div>
+                <Link
+                    :href="route('sales.index')"
+                    class="px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition shadow-xs"
+                >
+                    &larr; Back to Orders
+                </Link>
+            </div>
+        </template>
+
+        <div class="space-y-6">
+            <!-- Global Form Errors Alert Banner -->
+            <div
+                v-if="Object.keys(form.errors).length > 0"
+                class="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs shadow-xs"
+            >
+                <div class="font-bold mb-1.5 flex items-center gap-2">
+                    <svg class="w-4 h-4 text-rose-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <span>Please resolve the following before submitting:</span>
+                </div>
+                <ul class="list-disc list-inside space-y-1 ml-1 text-slate-700">
+                    <li v-for="(err, field) in form.errors" :key="field">
+                        {{ err }}
+                    </li>
+                </ul>
+            </div>
+
+            <form @submit.prevent="submit" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Left 2 Cols: Customer & Line items -->
+                <div class="lg:col-span-2 space-y-6">
+                    <!-- Customer Details Card -->
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
+                        <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                            <h2 class="text-base font-bold text-slate-900">Customer Details</h2>
+                            <div class="flex items-center bg-slate-100 p-0.5 rounded-lg text-xs font-semibold">
+                                <button
+                                    type="button"
+                                    @click="form.customer_mode = 'existing'"
+                                    :class="form.customer_mode === 'existing' ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-900'"
+                                    class="px-3 py-1 rounded-md transition"
+                                >
+                                    Existing Customer
+                                </button>
+                                <button
+                                    type="button"
+                                    @click="form.customer_mode = 'new'"
+                                    :class="form.customer_mode === 'new' ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-900'"
+                                    class="px-3 py-1 rounded-md transition"
+                                >
+                                    + New Customer
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Existing Customer dropdown -->
+                        <div v-if="form.customer_mode === 'existing'">
+                            <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Select Customer *</label>
+                            <SearchableSelect
+                                v-model="form.customer_id"
+                                :options="customers"
+                                labelKey="name"
+                                sublabelKey="phone"
+                                :error="form.errors.customer_id"
+                            />
+                        </div>
+
+                        <!-- Inline New Customer fields -->
+                        <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Customer Full Name *</label>
+                                <input
+                                    v-model="form.new_customer_name"
+                                    type="text"
+                                    required
+                                    class="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-1 focus:ring-emerald-500"
+                                />
+                                <div v-if="form.errors.new_customer_name" class="text-xs text-rose-500 mt-1">{{ form.errors.new_customer_name }}</div>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Phone / Mobile *</label>
+                                <input
+                                    v-model="form.new_customer_phone"
+                                    type="text"
+                                    required
+                                    class="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-1 focus:ring-emerald-500 font-mono"
+                                />
+                                <div v-if="form.errors.new_customer_phone" class="text-xs text-rose-500 mt-1">{{ form.errors.new_customer_phone }}</div>
+                            </div>
+
+                            <div class="sm:col-span-2">
+                                <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Delivery / Street Address *</label>
+                                <input
+                                    v-model="form.new_customer_address"
+                                    type="text"
+                                    required
+                                    class="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-1 focus:ring-emerald-500"
+                                />
+                                <div v-if="form.errors.new_customer_address" class="text-xs text-rose-500 mt-1">{{ form.errors.new_customer_address }}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Order Line Items Card -->
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
+                        <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                            <h2 class="text-base font-bold text-slate-900">Order Line Items</h2>
+                            <button
+                                type="button"
+                                @click="addItem"
+                                class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition"
+                            >
+                                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                                </svg>
+                                Add Line Item
+                            </button>
+                        </div>
+
+                        <!-- Barcode Quick Scan Bar -->
+                        <div class="flex flex-wrap items-center justify-between gap-3 p-3 bg-slate-50 border border-slate-200/90 rounded-xl">
+                            <div class="flex items-center gap-2 flex-1 max-w-md">
+                                <div class="relative flex-1">
+                                    <input
+                                        v-model="barcodeScanInput"
+                                        @keydown.enter.prevent="handleBarcodeSubmit"
+                                        type="text"
+                                        placeholder="Scan barcode to add product (USB Gun or Camera)..."
+                                        class="w-full pl-9 pr-4 py-2 rounded-xl text-xs font-mono border border-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 placeholder:text-slate-400 placeholder:text-xs"
+                                    />
+                                    <svg class="w-4 h-4 text-slate-400 absolute left-3 top-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                                    </svg>
+                                </div>
+                                <button
+                                    type="button"
+                                    @click="isCameraModalOpen = true"
+                                    class="px-3 py-2 rounded-xl bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-600 border border-slate-200 text-xs font-semibold flex items-center gap-1.5 transition shadow-2xs shrink-0"
+                                    title="Scan Barcode with Camera"
+                                >
+                                    <svg class="w-4 h-4 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    </svg>
+                                    <span>Camera</span>
+                                </button>
+                            </div>
+
+                            <div class="flex items-center gap-3">
+                                <span v-if="scanNotification" class="text-xs font-bold text-emerald-600 animate-pulse flex items-center gap-1">
+                                    <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                    {{ scanNotification }}
+                                </span>
+                                <span v-else class="text-[10px] uppercase font-bold tracking-wider text-slate-400">
+                                    USB Scanner Ready
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="space-y-3">
+                            <div
+                                v-for="(item, idx) in form.items"
+                                :key="idx"
+                                class="p-4 rounded-xl bg-slate-50/70 border border-slate-200/70 space-y-3"
+                            >
+                                <!-- Line 1: Product Selection, Live Stock Badge, & Remove Button -->
+                                <div class="flex items-start gap-3 justify-between">
+                                    <div class="flex-1 min-w-0">
+                                        <div class="flex items-center justify-between mb-1">
+                                            <label class="block text-[11px] font-semibold text-slate-500 uppercase">Product / SKU *</label>
+                                            <div v-if="item.product_id" class="flex items-center gap-1.5 text-[11px]">
+                                                <span class="text-slate-400">Stock:</span>
+                                                <span
+                                                    class="font-mono font-bold px-1.5 py-0.5 rounded text-[10px]"
+                                                    :class="getProductStock(item.product_id, form.warehouse_id).available > 0
+                                                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60'
+                                                        : 'bg-rose-50 text-rose-700 border border-rose-200/60'"
+                                                >
+                                                    {{ getProductStock(item.product_id, form.warehouse_id).available }} in stock
+                                                </span>
+                                                <span
+                                                    v-if="item.quantity > getProductStock(item.product_id, form.warehouse_id).available"
+                                                    class="text-rose-600 font-semibold text-[10px]"
+                                                >
+                                                    (Exceeds stock!)
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <SearchableSelect
+                                            v-model="item.product_id"
+                                            :options="productSelectOptions"
+                                            labelKey="name"
+                                            sublabelKey="sku_stock"
+                                            size="compact"
+                                            @change="() => onProductSelected(idx)"
+                                        />
+                                    </div>
+
+                                    <button
+                                        type="button"
+                                        @click="removeItem(idx)"
+                                        :disabled="form.items.length <= 1"
+                                        class="mt-5 p-2 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition shrink-0 disabled:opacity-30 disabled:hover:text-slate-400"
+                                        title="Remove item"
+                                    >
+                                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        </svg>
+                                    </button>
+                                </div>
+
+                                <!-- Line 2: Qty, Unit Price, Warranty, and Line Total -->
+                                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 items-center pt-2 border-t border-slate-200/60">
+                                    <div>
+                                        <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Qty *</label>
+                                        <input
+                                            v-model.number="item.quantity"
+                                            type="number"
+                                            min="0.01"
+                                            step="any"
+                                            required
+                                            class="w-full h-[34px] text-xs px-2.5 bg-white border border-slate-200 rounded-lg focus:ring-1 focus:ring-emerald-500 font-mono font-bold"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Unit Price *</label>
+                                        <input
+                                            v-model.number="item.unit_price"
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                            required
+                                            class="w-full h-[34px] text-xs px-2.5 bg-white border border-slate-200 rounded-lg focus:ring-1 focus:ring-emerald-500 font-mono"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Warranty (Days)</label>
+                                        <input
+                                            v-model.number="item.warranty_days"
+                                            type="number"
+                                            min="0"
+                                            class="w-full h-[34px] text-xs px-2.5 bg-white border border-slate-200 rounded-lg focus:ring-1 focus:ring-emerald-500 font-mono"
+                                        />
+                                    </div>
+
+                                    <div class="text-right">
+                                        <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Line Total</label>
+                                        <span class="text-sm font-bold text-slate-900 block py-1 font-mono">
+                                            <CurrencyDisplay :amount="(item.quantity || 0) * (item.unit_price || 0)" />
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Col: Order Meta & Financial Summary -->
+                <div class="space-y-6">
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
+                        <h2 class="text-base font-bold text-slate-900 border-b border-slate-100 pb-3">Warehouse & Timing</h2>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Dispatching Warehouse *</label>
+                            <select
+                                v-model="form.warehouse_id"
+                                required
+                                class="w-full text-sm px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500"
+                            >
+                                <option value="" disabled>-- Select Warehouse Hub --</option>
+                                <option v-for="w in warehouses" :key="w.id" :value="w.id">
+                                    {{ w.name }} ({{ w.code }})
+                                </option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Order Date *</label>
+                            <input
+                                v-model="form.order_date"
+                                type="date"
+                                required
+                                class="w-full text-sm px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500"
+                            />
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Order Status</label>
+                            <select
+                                v-model="form.status"
+                                class="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-1 focus:ring-emerald-500 font-medium"
+                            >
+                                <option value="confirmed">Confirmed (Reserve stock immediately)</option>
+                                <option value="draft">Draft (No reservation yet)</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Notes / Terms</label>
+                            <textarea
+                                v-model="form.notes"
+                                rows="2"
+                                class="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-1 focus:ring-emerald-500"
+                            ></textarea>
+                        </div>
+                    </div>
+
+                    <!-- Financial Ledger Summary -->
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
+                        <h2 class="text-base font-bold text-slate-900 border-b border-slate-100 pb-3">Billing & Payment</h2>
+
+                        <div class="space-y-2 text-sm">
+                            <div class="flex justify-between text-slate-600">
+                                <span>Items Subtotal:</span>
+                                <span class="font-semibold text-slate-900"><CurrencyDisplay :amount="subtotal" /></span>
+                            </div>
+
+                            <div class="flex items-center justify-between gap-4">
+                                <span class="text-slate-600 text-xs uppercase font-semibold">Discount:</span>
+                                <input
+                                    v-model.number="form.discount_amount"
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    class="w-28 text-right text-xs px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white"
+                                />
+                            </div>
+
+                            <div class="flex items-center justify-between gap-4">
+                                <span class="text-slate-600 text-xs uppercase font-semibold">Tax / VAT (%):</span>
+                                <input
+                                    v-model.number="form.tax_rate"
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    class="w-28 text-right text-xs px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white"
+                                />
+                            </div>
+
+                            <div class="flex items-center justify-between gap-4">
+                                <span class="text-slate-600 text-xs uppercase font-semibold">Shipping:</span>
+                                <input
+                                    v-model.number="form.shipping_cost"
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    class="w-28 text-right text-xs px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white"
+                                />
+                            </div>
+
+                            <div class="pt-3 border-t border-slate-200 flex justify-between text-base font-bold text-slate-900">
+                                <span>Grand Total:</span>
+                                <span class="text-emerald-700"><CurrencyDisplay :amount="totalAmount" /></span>
+                            </div>
+
+                            <!-- Payment Section -->
+                            <div class="pt-3 border-t border-slate-100 space-y-2">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-xs font-semibold text-slate-600 uppercase">Paid Now:</span>
+                                    <button
+                                        type="button"
+                                        @click="setFullPayment"
+                                        class="text-[11px] text-emerald-600 hover:text-emerald-800 font-semibold underline"
+                                    >
+                                        Paid in Full
+                                    </button>
+                                </div>
+                                <input
+                                    v-model.number="form.paid_amount"
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    class="w-full text-base font-bold px-3 py-2 bg-emerald-50/50 border border-emerald-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500"
+                                />
+                                <div class="flex justify-between text-xs font-semibold pt-1">
+                                    <span class="text-slate-500">Remaining Due:</span>
+                                    <span :class="dueAmount > 0 ? 'text-rose-600 font-bold' : 'text-emerald-600 font-bold'">
+                                        <CurrencyDisplay :amount="dueAmount" />
+                                    </span>
+                                </div>
+
+                                <!-- Dynamic Deposit Account & Reference -->
+                                <div v-if="form.paid_amount > 0" class="pt-2 space-y-3 bg-slate-50 p-3 rounded-xl border border-slate-200/80">
+                                    <div>
+                                        <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                                            Deposit Into Account *
+                                        </label>
+                                        <SearchableSelect
+                                            v-model="form.financial_account_id"
+                                            :options="accountOptions"
+                                            size="compact"
+                                            :error="form.errors.financial_account_id"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                                            Transaction Ref / TrxID #
+                                        </label>
+                                        <input
+                                            v-model="form.payment_reference"
+                                            type="text"
+                                            class="w-full text-xs px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg focus:ring-1 focus:ring-emerald-500 font-mono"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button
+                            type="submit"
+                            :disabled="form.processing"
+                            class="w-full py-3 px-4 rounded-xl font-bold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 shadow-md shadow-emerald-500/20 transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50"
+                        >
+                            <span v-if="form.processing">Processing Order...</span>
+                            <span v-else>Generate Sales Order & Invoice</span>
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <!-- Camera Barcode Scanner Modal -->
+        <BarcodeCameraModal
+            v-model:open="isCameraModalOpen"
+            @scan="handleBarcodeScanned"
+        />
+    </AppLayout>
+</template>
