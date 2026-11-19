@@ -2,17 +2,19 @@
 
 namespace App\Models;
 
+use App\Contracts\TenantAware;
+use App\Traits\BelongsToTenant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class SubscriptionPayment extends Model
+class SubscriptionPayment extends Model implements TenantAware
 {
-    use HasFactory;
+    use HasFactory, BelongsToTenant;
 
     protected $fillable = [
-        'payment_number',
         'team_id',
+        'payment_number',
         'plan_id',
         'billing_cycle',
         'amount_bdt',
@@ -33,11 +35,6 @@ class SubscriptionPayment extends Model
         'reviewed_at' => 'datetime',
         'gateway_payload' => 'array',
     ];
-
-    public function team(): BelongsTo
-    {
-        return $this->belongsTo(Team::class);
-    }
 
     public function plan(): BelongsTo
     {

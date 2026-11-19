@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-class ProductSerial extends Model
+class ProductSerial extends Model implements \App\Contracts\TenantAware
 {
     use HasFactory, BelongsToTenant, SoftDeletes;
 

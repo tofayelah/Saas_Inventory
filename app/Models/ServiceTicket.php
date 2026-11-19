@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-class ServiceTicket extends Model
+class ServiceTicket extends Model implements \App\Contracts\TenantAware
 {
     use HasFactory, BelongsToTenant, SoftDeletes;
 

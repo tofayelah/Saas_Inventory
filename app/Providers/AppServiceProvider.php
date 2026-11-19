@@ -15,6 +15,13 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->singleton(\App\Services\TenantContext::class, function () {
+            return new \App\Services\TenantContext();
+        });
+        $this->app->singleton(\App\Services\TenantContextResolver::class, function () {
+            return new \App\Services\TenantContextResolver();
+        });
+
         if (file_exists(app_path('Helpers/NumberToWords.php'))) {
             require_once app_path('Helpers/NumberToWords.php');
         }

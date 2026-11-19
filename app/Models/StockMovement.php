@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class StockMovement extends Model
+class StockMovement extends Model implements \App\Contracts\TenantAware
 {
     use HasFactory, BelongsToTenant;
 

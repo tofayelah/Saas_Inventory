@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class SalesOrderItem extends Model
+class SalesOrderItem extends Model implements \App\Contracts\TenantAware
 {
     use HasFactory, BelongsToTenant;
 

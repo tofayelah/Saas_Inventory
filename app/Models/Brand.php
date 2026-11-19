@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
 
-class Brand extends Model
+class Brand extends Model implements \App\Contracts\TenantAware
 {
     use HasFactory, BelongsToTenant, SoftDeletes;
 

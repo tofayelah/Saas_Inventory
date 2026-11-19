@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 
-class SalesOrder extends Model
+class SalesOrder extends Model implements \App\Contracts\TenantAware
 {
     use HasFactory, BelongsToTenant, SoftDeletes, LogsActivity;
 

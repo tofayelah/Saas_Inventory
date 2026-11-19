@@ -2,12 +2,15 @@
 
 namespace App\Http\Middleware;
 
+use App\Services\TenantContext;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 class EnsureSuperAdmin
 {
+    public function __construct(protected TenantContext $tenantContext) {}
+
     /**
      * Handle an incoming request.
      */
@@ -24,6 +27,9 @@ class EnsureSuperAdmin
             $user->forceFill(['current_team_id' => null])->save();
         }
 
-        return $next($request);
+        // Enable privileged mode for platform control plane requests
+        return $this->tenantContext->executePrivileged(function () use ($next, $request) {
+            return $next($request);
+        });
     }
 }

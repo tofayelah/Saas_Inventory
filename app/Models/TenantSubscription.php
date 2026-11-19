@@ -2,13 +2,15 @@
 
 namespace App\Models;
 
+use App\Contracts\TenantAware;
+use App\Traits\BelongsToTenant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class TenantSubscription extends Model
+class TenantSubscription extends Model implements TenantAware
 {
-    use HasFactory;
+    use HasFactory, BelongsToTenant;
 
     protected $fillable = [
         'team_id',

@@ -2,13 +2,19 @@
 
 namespace App\Http\Middleware;
 
+use App\Services\TenantContext;
+use App\Services\TenantContextResolver;
 use Closure;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Symfony\Component\HttpFoundation\Response;
 
 class SetTenantContext
 {
+    public function __construct(
+        protected TenantContext $tenantContext,
+        protected TenantContextResolver $resolver
+    ) {}
+
     /**
      * Handle an incoming request.
      *
@@ -16,20 +22,30 @@ class SetTenantContext
      */
     public function handle(Request $request, Closure $next): Response
     {
-        if (Auth::check()) {
-            $user = Auth::user();
+        $tenant = $this->resolver->resolve($request);
 
-            // Ensure current_team_id is initialized if user has teams (skip super admin so platform mode is preserved)
-            if (!$user->isSuperAdmin() && !$user->current_team_id && $user->allTeams()->isNotEmpty()) {
-                $user->switchTeam($user->allTeams()->first());
-            }
+        $this->tenantContext->setHttpRequestContext(true);
 
-            // Sync Spatie Permissions team context
-            if ($user->current_team_id && function_exists('setPermissionsTeamId')) {
-                setPermissionsTeamId($user->current_team_id);
-            }
+        if ($tenant) {
+            $this->tenantContext->setTenant($tenant);
+        } else {
+            $this->tenantContext->clear();
+            $this->tenantContext->setHttpRequestContext(true);
         }
 
-        return $next($request);
+        try {
+            $response = $next($request);
+            return $response;
+        } finally {
+            $this->tenantContext->setHttpRequestContext(false);
+        }
+    }
+
+    /**
+     * Clean up context after response has been sent to client.
+     */
+    public function terminate(Request $request, Response $response): void
+    {
+        $this->tenantContext->clear();
     }
 }
