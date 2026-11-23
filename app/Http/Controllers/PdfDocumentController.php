@@ -455,11 +455,9 @@ class PdfDocumentController extends Controller
      */
     public function trialBalancePdf(Request $request, \App\Services\AccountingService $accountingService)
     {
-        $user = Auth::user();
-        if (!$user->isSuperAdmin() && !$user->ownsTeam($user->currentTeam) && !$user->can('manage-accounting') && !$user->can('view-reports')) {
-            abort(403, 'Unauthorized. You do not have permission to download financial reports.');
-        }
+        $this->authorize('export-financial-reports');
 
+        $user = Auth::user();
         $team = $user->currentTeam;
         $asOfDate = $request->input('as_of_date', now()->toDateString());
 
@@ -492,11 +490,9 @@ class PdfDocumentController extends Controller
      */
     public function profitAndLossPdf(Request $request, \App\Services\AccountingService $accountingService)
     {
-        $user = Auth::user();
-        if (!$user->isSuperAdmin() && !$user->ownsTeam($user->currentTeam) && !$user->can('manage-accounting') && !$user->can('view-reports')) {
-            abort(403, 'Unauthorized. You do not have permission to download financial reports.');
-        }
+        $this->authorize('export-financial-reports');
 
+        $user = Auth::user();
         $team = $user->currentTeam;
         $startDate = $request->input('start_date', now()->startOfYear()->toDateString());
         $endDate = $request->input('end_date', now()->toDateString());
@@ -530,11 +526,9 @@ class PdfDocumentController extends Controller
      */
     public function balanceSheetPdf(Request $request, \App\Services\AccountingService $accountingService)
     {
-        $user = Auth::user();
-        if (!$user->isSuperAdmin() && !$user->ownsTeam($user->currentTeam) && !$user->can('manage-accounting') && !$user->can('view-reports')) {
-            abort(403, 'Unauthorized. You do not have permission to download financial reports.');
-        }
+        $this->authorize('export-financial-reports');
 
+        $user = Auth::user();
         $team = $user->currentTeam;
         $asOfDate = $request->input('as_of_date', now()->toDateString());
 

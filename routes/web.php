@@ -393,15 +393,7 @@ Route::middleware([
     Route::delete('/admin/tenants/{team}', [SuperAdminController::class, 'destroyTenant'])->name('admin.tenants.destroy');
     Route::post('/admin/tenants/{team}/toggle-status', [SuperAdminController::class, 'toggleStatus'])->name('admin.tenants.toggle-status');
     Route::post('/admin/tenants/{team}/switch', [SuperAdminController::class, 'switchToTenant'])->name('admin.tenants.switch');
-    Route::post('/admin/exit-tenant', function () {
-        $user = auth()->user();
-        if ($user && $user->isSuperAdmin()) {
-            session()->forget('impersonated_tenant_id');
-            $user->forceFill(['current_team_id' => null])->save();
-            return redirect()->route('admin.dashboard')->with('success', 'Exited tenant workspace. Back to Platform Super-Admin mode.');
-        }
-        return redirect()->route('dashboard');
-    })->name('admin.exit-tenant');
+    Route::post('/admin/exit-tenant', [SuperAdminController::class, 'exitTenant'])->name('admin.exit-tenant');
 
     // Subscription Plans & Quotas Management
     Route::get('/admin/plans', [AdminPlanController::class, 'index'])->name('admin.plans.index');

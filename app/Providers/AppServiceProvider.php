@@ -124,6 +124,11 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(JournalEntry::class, JournalEntryPolicy::class);
         Gate::policy(Team::class, TeamPolicy::class);
 
+        // Dedicated Financial Report Authorization Gates (SEC-G2-02)
+        Gate::define('view-financial-reports', [\App\Policies\FinancialReportPolicy::class, 'viewReports']);
+        Gate::define('export-financial-reports', [\App\Policies\FinancialReportPolicy::class, 'exportReports']);
+        Gate::define('reconcile-financial-reports', [\App\Policies\FinancialReportPolicy::class, 'reconcile']);
+
         View::composer('*', function ($view) {
             $raw = [];
             try {

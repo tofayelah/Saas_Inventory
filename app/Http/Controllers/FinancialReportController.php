@@ -17,12 +17,9 @@ class FinancialReportController extends Controller
      */
     public function trialBalance(Request $request, AccountingService $accountingService)
     {
-        $user = Auth::user();
-        if (!$user->isSuperAdmin() && !$user->ownsTeam($user->currentTeam) && !$user->can('manage-accounting') && !$user->can('view-reports')) {
-            abort(403, 'Unauthorized. You do not have permission to access financial reports.');
-        }
+        $this->authorize('view-financial-reports');
 
-        $teamId = $user->current_team_id;
+        $teamId = Auth::user()->current_team_id;
         $asOfDate = $request->input('as_of_date', now()->toDateString());
 
         $data = $accountingService->getTrialBalance($teamId, $asOfDate);
@@ -38,12 +35,9 @@ class FinancialReportController extends Controller
      */
     public function profitAndLoss(Request $request, AccountingService $accountingService)
     {
-        $user = Auth::user();
-        if (!$user->isSuperAdmin() && !$user->ownsTeam($user->currentTeam) && !$user->can('manage-accounting') && !$user->can('view-reports')) {
-            abort(403, 'Unauthorized. You do not have permission to access financial reports.');
-        }
+        $this->authorize('view-financial-reports');
 
-        $teamId = $user->current_team_id;
+        $teamId = Auth::user()->current_team_id;
         $startDate = $request->input('start_date', now()->startOfYear()->toDateString());
         $endDate = $request->input('end_date', now()->toDateString());
 
@@ -60,12 +54,9 @@ class FinancialReportController extends Controller
      */
     public function balanceSheet(Request $request, AccountingService $accountingService)
     {
-        $user = Auth::user();
-        if (!$user->isSuperAdmin() && !$user->ownsTeam($user->currentTeam) && !$user->can('manage-accounting') && !$user->can('view-reports')) {
-            abort(403, 'Unauthorized. You do not have permission to access financial reports.');
-        }
+        $this->authorize('view-financial-reports');
 
-        $teamId = $user->current_team_id;
+        $teamId = Auth::user()->current_team_id;
         $asOfDate = $request->input('as_of_date', now()->toDateString());
 
         $data = $accountingService->getBalanceSheet($teamId, $asOfDate);
@@ -81,12 +72,9 @@ class FinancialReportController extends Controller
      */
     public function generalLedger(Request $request, AccountingService $accountingService)
     {
-        $user = Auth::user();
-        if (!$user->isSuperAdmin() && !$user->ownsTeam($user->currentTeam) && !$user->can('manage-accounting') && !$user->can('view-reports')) {
-            abort(403, 'Unauthorized. You do not have permission to access financial reports.');
-        }
+        $this->authorize('view-financial-reports');
 
-        $teamId = $user->current_team_id;
+        $teamId = Auth::user()->current_team_id;
 
         $accounts = ChartOfAccount::where('team_id', $teamId)->where('is_active', true)->orderBy('account_code')->get();
         $selectedAccountId = $request->input('account_id', $accounts->first()?->id);
@@ -95,6 +83,8 @@ class FinancialReportController extends Controller
 
         $ledgerData = null;
         if ($selectedAccountId) {
+            $account = ChartOfAccount::where('team_id', $teamId)->findOrFail($selectedAccountId);
+            $this->authorize('view', $account);
             $ledgerData = $accountingService->getGeneralLedger($teamId, (int) $selectedAccountId, $startDate, $endDate);
         }
 
@@ -115,12 +105,9 @@ class FinancialReportController extends Controller
      */
     public function reconciliation(Request $request)
     {
-        $user = Auth::user();
-        if (!$user->isSuperAdmin() && !$user->ownsTeam($user->currentTeam) && !$user->can('manage-accounting')) {
-            abort(403, 'Unauthorized. Only accountants or administrators can perform bank reconciliation.');
-        }
+        $this->authorize('reconcile-financial-reports');
 
-        $teamId = $user->current_team_id;
+        $teamId = Auth::user()->current_team_id;
 
         $bankAccounts = ChartOfAccount::where('team_id', $teamId)
             ->where('type', 'asset')
@@ -153,12 +140,9 @@ class FinancialReportController extends Controller
      */
     public function storeReconciliation(Request $request, AccountingService $accountingService)
     {
-        $user = Auth::user();
-        if (!$user->isSuperAdmin() && !$user->ownsTeam($user->currentTeam) && !$user->can('manage-accounting')) {
-            abort(403, 'Unauthorized. Only accountants or administrators can perform bank reconciliation.');
-        }
+        $this->authorize('reconcile-financial-reports');
 
-        $teamId = $user->current_team_id;
+        $teamId = Auth::user()->current_team_id;
 
         $validated = $request->validate([
             'chart_of_account_id' => ['required', Rule::exists('chart_of_accounts', 'id')->where('team_id', $teamId)],
