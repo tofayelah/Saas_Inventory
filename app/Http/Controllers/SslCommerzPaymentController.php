@@ -10,6 +10,7 @@ use App\Services\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class SslCommerzPaymentController extends Controller
@@ -78,25 +79,46 @@ class SslCommerzPaymentController extends Controller
         // 4. Authoritative Server-to-Server Order Validation API Call (SEC-G3-REV-01)
         $validation = $validator->validateTransaction($payment, $valId);
         if (!$validation['is_valid']) {
-            $payment->update([
-                'status' => 'rejected',
-                'rejection_reason' => $validation['reason'],
-                'gateway_payload' => $validation['payload'] ?? $request->all(),
-            ]);
+            DB::transaction(function () use ($payment, $validation, $request) {
+                $locked = SubscriptionPayment::withoutGlobalScopes()->where('id', $payment->id)->lockForUpdate()->first();
+                if ($locked && $locked->status === 'pending') {
+                    $locked->update([
+                        'status' => 'rejected',
+                        'rejection_reason' => $validation['reason'],
+                        'gateway_payload' => $validation['payload'] ?? $request->all(),
+                    ]);
+                }
+            });
 
             return redirect()->route('subscription.index')->withErrors(['error' => "Payment validation failed: {$validation['reason']}"]);
         }
 
-        $payment->update([
-            'trx_id' => $valId,
-            'gateway_payload' => $validation['payload'] ?? $request->all(),
-        ]);
-
-        // 5. Execute Payment Approval within isolated Tenant Context
+        // 5. Concurrency-Safe Payment Approval within isolated Tenant Context (SEC-G4-PRI-01)
         $team = Team::withoutGlobalScopes()->find($payment->team_id);
         if ($team) {
-            $tenantContext->runWithTenant($team, function () use ($service, $payment) {
-                $service->approvePayment($payment, null);
+            $tenantContext->runWithTenant($team, function () use ($service, $payment, $valId, $validation, $request) {
+                DB::transaction(function () use ($service, $payment, $valId, $validation, $request) {
+                    $lockedPayment = SubscriptionPayment::withoutGlobalScopes()
+                        ->where('id', $payment->id)
+                        ->lockForUpdate()
+                        ->first();
+
+                    if (!$lockedPayment) {
+                        return;
+                    }
+
+                    // Idempotent: already approved by concurrent IPN or redirect
+                    if ($lockedPayment->status === 'approved') {
+                        return;
+                    }
+
+                    $lockedPayment->update([
+                        'trx_id' => $valId,
+                        'gateway_payload' => $validation['payload'] ?? $request->all(),
+                    ]);
+
+                    $service->approvePayment($lockedPayment, null);
+                });
             });
         }
 
@@ -111,13 +133,20 @@ class SslCommerzPaymentController extends Controller
         $tranId = (string) $request->input('tran_id', '');
 
         if ($tranId) {
-            SubscriptionPayment::withoutGlobalScopes()->where('payment_number', $tranId)
-                ->where('status', 'pending')
-                ->update([
-                    'status' => 'rejected',
-                    'rejection_reason' => 'Transaction failed at SSLCommerz gateway.',
-                    'gateway_payload' => $request->all(),
-                ]);
+            DB::transaction(function () use ($tranId, $request) {
+                $payment = SubscriptionPayment::withoutGlobalScopes()
+                    ->where('payment_number', $tranId)
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($payment && $payment->status === 'pending') {
+                    $payment->update([
+                        'status' => 'rejected',
+                        'rejection_reason' => 'Transaction failed at SSLCommerz gateway.',
+                        'gateway_payload' => $request->all(),
+                    ]);
+                }
+            });
         }
 
         return redirect()->route('subscription.index')->withErrors([
@@ -133,13 +162,20 @@ class SslCommerzPaymentController extends Controller
         $tranId = (string) $request->input('tran_id', '');
 
         if ($tranId) {
-            SubscriptionPayment::withoutGlobalScopes()->where('payment_number', $tranId)
-                ->where('status', 'pending')
-                ->update([
-                    'status' => 'rejected',
-                    'rejection_reason' => 'Customer cancelled checkout on SSLCommerz gateway.',
-                    'gateway_payload' => $request->all(),
-                ]);
+            DB::transaction(function () use ($tranId, $request) {
+                $payment = SubscriptionPayment::withoutGlobalScopes()
+                    ->where('payment_number', $tranId)
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($payment && $payment->status === 'pending') {
+                    $payment->update([
+                        'status' => 'rejected',
+                        'rejection_reason' => 'Customer cancelled checkout on SSLCommerz gateway.',
+                        'gateway_payload' => $request->all(),
+                    ]);
+                }
+            });
         }
 
         return redirect()->route('subscription.index')->with('warning', 'SSLCommerz payment checkout was cancelled.');
@@ -193,11 +229,16 @@ class SslCommerzPaymentController extends Controller
 
         // 3. Status Verification (No Sandbox Bypass - SEC-G3-REV-02)
         if (!in_array($status, ['VALID', 'VALIDATED'], true)) {
-            $payment->update([
-                'status' => 'rejected',
-                'rejection_reason' => "IPN status: {$status}",
-                'gateway_payload' => $request->all(),
-            ]);
+            DB::transaction(function () use ($payment, $status, $request) {
+                $locked = SubscriptionPayment::withoutGlobalScopes()->where('id', $payment->id)->lockForUpdate()->first();
+                if ($locked && $locked->status === 'pending') {
+                    $locked->update([
+                        'status' => 'rejected',
+                        'rejection_reason' => "IPN status: {$status}",
+                        'gateway_payload' => $request->all(),
+                    ]);
+                }
+            });
 
             return response()->json(['status' => 'rejected', 'message' => "Transaction status [{$status}] is not valid"], 422);
         }
@@ -209,11 +250,16 @@ class SslCommerzPaymentController extends Controller
         // 4. Authoritative Server-to-Server Order Validation API Call (SEC-G3-REV-01)
         $validation = $validator->validateTransaction($payment, $valId);
         if (!$validation['is_valid']) {
-            $payment->update([
-                'status' => 'rejected',
-                'rejection_reason' => $validation['reason'],
-                'gateway_payload' => $validation['payload'] ?? $request->all(),
-            ]);
+            DB::transaction(function () use ($payment, $validation, $request) {
+                $locked = SubscriptionPayment::withoutGlobalScopes()->where('id', $payment->id)->lockForUpdate()->first();
+                if ($locked && $locked->status === 'pending') {
+                    $locked->update([
+                        'status' => 'rejected',
+                        'rejection_reason' => $validation['reason'],
+                        'gateway_payload' => $validation['payload'] ?? $request->all(),
+                    ]);
+                }
+            });
 
             return response()->json([
                 'status' => 'error',
@@ -221,16 +267,32 @@ class SslCommerzPaymentController extends Controller
             ], 422);
         }
 
-        $payment->update([
-            'trx_id' => $valId,
-            'gateway_payload' => $validation['payload'] ?? $request->all(),
-        ]);
-
-        // 5. Execute within tenant context
+        // 5. Concurrency-Safe Payment Approval within isolated Tenant Context (SEC-G4-PRI-01)
         $team = Team::withoutGlobalScopes()->find($payment->team_id);
         if ($team) {
-            $tenantContext->runWithTenant($team, function () use ($service, $payment) {
-                $service->approvePayment($payment, null);
+            $tenantContext->runWithTenant($team, function () use ($service, $payment, $valId, $validation, $request) {
+                DB::transaction(function () use ($service, $payment, $valId, $validation, $request) {
+                    $lockedPayment = SubscriptionPayment::withoutGlobalScopes()
+                        ->where('id', $payment->id)
+                        ->lockForUpdate()
+                        ->first();
+
+                    if (!$lockedPayment) {
+                        return;
+                    }
+
+                    // Idempotent: already approved by concurrent IPN or redirect
+                    if ($lockedPayment->status === 'approved') {
+                        return;
+                    }
+
+                    $lockedPayment->update([
+                        'trx_id' => $valId,
+                        'gateway_payload' => $validation['payload'] ?? $request->all(),
+                    ]);
+
+                    $service->approvePayment($lockedPayment, null);
+                });
             });
         }
 

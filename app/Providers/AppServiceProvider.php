@@ -75,6 +75,20 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Queue Worker Lifecycle Tenant Isolation & Leakage Prevention (SEC-G4-PRI-05)
+        \Illuminate\Support\Facades\Queue::before(function () {
+            app(\App\Services\TenantContext::class)->clear();
+        });
+        \Illuminate\Support\Facades\Queue::after(function () {
+            app(\App\Services\TenantContext::class)->clear();
+        });
+        \Illuminate\Support\Facades\Queue::failing(function () {
+            app(\App\Services\TenantContext::class)->clear();
+        });
+        \Illuminate\Support\Facades\Queue::looping(function () {
+            app(\App\Services\TenantContext::class)->clear();
+        });
+
         // Enforce Tenant-Bound Sanctum Personal Access Token Model (Gate 3)
         \Laravel\Sanctum\Sanctum::usePersonalAccessTokenModel(\App\Models\Sanctum\PersonalAccessToken::class);
 

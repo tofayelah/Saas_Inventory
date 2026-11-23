@@ -319,19 +319,33 @@ class SubscriptionService
      */
     public function approvePayment(SubscriptionPayment $payment, ?int $adminUserId = null): TenantSubscription
     {
-        if ($payment->status === 'approved') {
-            throw new \InvalidArgumentException("Payment {$payment->payment_number} has already been approved.");
-        }
-
         return DB::transaction(function () use ($payment, $adminUserId) {
-            $payment->update([
+            /** @var SubscriptionPayment $lockedPayment */
+            $lockedPayment = SubscriptionPayment::withoutGlobalScopes()
+                ->where('id', $payment->id)
+                ->lockForUpdate()
+                ->first();
+
+            if (!$lockedPayment) {
+                throw new \InvalidArgumentException("Payment record not found.");
+            }
+
+            if ($lockedPayment->status === 'approved') {
+                throw new \InvalidArgumentException("Payment {$lockedPayment->payment_number} has already been approved.");
+            }
+
+            $lockedPayment->update([
                 'status' => 'approved',
                 'reviewed_by' => $adminUserId,
                 'reviewed_at' => now(),
             ]);
 
-            $sub = TenantSubscription::where('team_id', $payment->team_id)->first();
-            $cycleMonths = $payment->billing_cycle === 'yearly' ? 12 : 1;
+            /** @var TenantSubscription|null $sub */
+            $sub = TenantSubscription::where('team_id', $lockedPayment->team_id)
+                ->lockForUpdate()
+                ->first();
+
+            $cycleMonths = $lockedPayment->billing_cycle === 'yearly' ? 12 : 1;
 
             if ($sub) {
                 // If already active and ends_at is in the future, extend from current ends_at
@@ -342,27 +356,27 @@ class SubscriptionService
                 $newEndsAt = (clone $baseDate)->addMonths($cycleMonths);
 
                 $sub->update([
-                    'plan_id' => $payment->plan_id,
+                    'plan_id' => $lockedPayment->plan_id,
                     'status' => 'active',
-                    'billing_cycle' => $payment->billing_cycle,
+                    'billing_cycle' => $lockedPayment->billing_cycle,
                     'starts_at' => $sub->starts_at ?? now(),
                     'ends_at' => $newEndsAt,
                 ]);
             } else {
                 $sub = TenantSubscription::create([
-                    'team_id' => $payment->team_id,
-                    'plan_id' => $payment->plan_id,
+                    'team_id' => $lockedPayment->team_id,
+                    'plan_id' => $lockedPayment->plan_id,
                     'status' => 'active',
-                    'billing_cycle' => $payment->billing_cycle,
+                    'billing_cycle' => $lockedPayment->billing_cycle,
                     'starts_at' => now(),
                     'ends_at' => now()->addMonths($cycleMonths),
                 ]);
             }
 
             // Sync with Team status
-            $payment->team->update([
+            $lockedPayment->team->update([
                 'status' => 'active',
-                'subscription_plan' => $payment->plan->slug,
+                'subscription_plan' => $lockedPayment->plan->slug,
                 'subscription_expires_at' => $sub->ends_at,
             ]);
 
@@ -375,14 +389,26 @@ class SubscriptionService
      */
     public function rejectPayment(SubscriptionPayment $payment, int $adminUserId, string $reason): SubscriptionPayment
     {
-        $payment->update([
-            'status' => 'rejected',
-            'reviewed_by' => $adminUserId,
-            'reviewed_at' => now(),
-            'rejection_reason' => $reason,
-        ]);
+        return DB::transaction(function () use ($payment, $adminUserId, $reason) {
+            /** @var SubscriptionPayment $lockedPayment */
+            $lockedPayment = SubscriptionPayment::withoutGlobalScopes()
+                ->where('id', $payment->id)
+                ->lockForUpdate()
+                ->first();
 
-        return $payment;
+            if (!$lockedPayment) {
+                throw new \InvalidArgumentException("Payment record not found.");
+            }
+
+            $lockedPayment->update([
+                'status' => 'rejected',
+                'reviewed_by' => $adminUserId,
+                'reviewed_at' => now(),
+                'rejection_reason' => $reason,
+            ]);
+
+            return $lockedPayment;
+        });
     }
 
     /**

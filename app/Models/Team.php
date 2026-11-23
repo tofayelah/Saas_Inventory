@@ -136,19 +136,19 @@ class Team extends JetstreamTeam
     }
 
     /**
-     * Get web URL for invoice background preview.
+     * Get web URL for invoice background preview (SEC-G3-POST-02).
      */
     public function getInvoiceBgUrl(): ?string
     {
-        return $this->invoice_bg_path ? asset('storage/' . $this->invoice_bg_path) : null;
+        return $this->invoice_bg_path ? route('settings.company.letterhead', ['type' => 'invoice']) : null;
     }
 
     /**
-     * Get web URL for report background preview.
+     * Get web URL for report background preview (SEC-G3-POST-02).
      */
     public function getReportBgUrl(): ?string
     {
-        return $this->report_bg_path ? asset('storage/' . $this->report_bg_path) : null;
+        return $this->report_bg_path ? route('settings.company.letterhead', ['type' => 'report']) : null;
     }
 
     /**

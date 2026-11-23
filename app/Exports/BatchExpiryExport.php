@@ -29,9 +29,18 @@ class BatchExpiryExport implements FromCollection, WithHeadings, WithMapping, Sh
     public function collection(): Collection
     {
         $query = DB::table('purchase_order_items')
-            ->join('purchase_orders', 'purchase_order_items.purchase_order_id', '=', 'purchase_orders.id')
-            ->join('products', 'purchase_order_items.product_id', '=', 'products.id')
-            ->leftJoin('warehouses', 'purchase_orders.warehouse_id', '=', 'warehouses.id')
+            ->join('purchase_orders', function ($join) {
+                $join->on('purchase_order_items.purchase_order_id', '=', 'purchase_orders.id')
+                     ->where('purchase_orders.team_id', '=', $this->teamId);
+            })
+            ->join('products', function ($join) {
+                $join->on('purchase_order_items.product_id', '=', 'products.id')
+                     ->where('products.team_id', '=', $this->teamId);
+            })
+            ->leftJoin('warehouses', function ($join) {
+                $join->on('purchase_orders.warehouse_id', '=', 'warehouses.id')
+                     ->where('warehouses.team_id', '=', $this->teamId);
+            })
             ->where('purchase_orders.team_id', $this->teamId)
             ->whereNotNull('purchase_order_items.expiry_date')
             ->select([

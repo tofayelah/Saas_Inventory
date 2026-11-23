@@ -329,4 +329,39 @@ class TenantSettingsController extends Controller
             'Content-Disposition' => 'inline; filename="sample-report-preview.pdf"',
         ]);
     }
+
+    /**
+     * Authenticated stream for private tenant letterhead background (SEC-G3-POST-02).
+     */
+    public function streamLetterhead(Request $request, string $type)
+    {
+        $user = Auth::user();
+        $team = $user?->currentTeam;
+
+        if (!$team) {
+            abort(403, 'No active tenant workspace selected.');
+        }
+
+        if (!$user->isSuperAdmin() && !$user->ownsTeam($team) && !$user->hasTeamRole($team, 'admin')) {
+            abort(403, 'Unauthorized. Only organization owners or administrators can view letterheads.');
+        }
+
+        $path = match ($type) {
+            'invoice' => $team->getInvoiceBgAbsolutePath(),
+            'report' => $team->getReportBgAbsolutePath(),
+            default => null,
+        };
+
+        if (!$path || !file_exists($path)) {
+            abort(404, 'Letterhead file not found.');
+        }
+
+        $mimeType = mime_content_type($path) ?: 'image/png';
+
+        return response()->file($path, [
+            'Content-Type' => $mimeType,
+            'X-Content-Type-Options' => 'nosniff',
+            'Cache-Control' => 'private, no-cache, no-store, must-revalidate',
+        ]);
+    }
 }

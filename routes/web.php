@@ -364,6 +364,7 @@ Route::middleware([
         Route::post('/settings/company/remove-report-bg', [TenantSettingsController::class, 'removeReportBg'])->name('settings.company.remove-report-bg');
         Route::get('/settings/company/preview-invoice-bg', [TenantSettingsController::class, 'previewInvoiceBg'])->name('settings.company.preview-invoice-bg');
         Route::get('/settings/company/preview-report-bg', [TenantSettingsController::class, 'previewReportBg'])->name('settings.company.preview-report-bg');
+        Route::get('/settings/company/letterhead/{type}', [TenantSettingsController::class, 'streamLetterhead'])->name('settings.company.letterhead');
     });
 
     // 12. Tenant Subscription & Billing (manage-billing)

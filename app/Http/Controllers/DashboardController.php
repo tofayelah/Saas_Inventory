@@ -36,9 +36,12 @@ class DashboardController extends Controller
 
         // Cache heavy aggregated dashboard metrics for 60 seconds per tenant
         $kpis = Cache::remember("tenant_dashboard_kpis_{$team->id}", 60, function () use ($team) {
-            // 1. Total Inventory Valuation (sum of quantity * cost_price across all warehouses)
+            // 1. Total Inventory Valuation (sum of quantity * cost_price across all warehouses - Hardened Tenant Join - SEC-G4-PRI-04)
             $totalValuation = (float) DB::table('stock_levels')
-                ->join('products', 'stock_levels.product_id', '=', 'products.id')
+                ->join('products', function ($join) use ($team) {
+                    $join->on('stock_levels.product_id', '=', 'products.id')
+                         ->where('products.team_id', '=', $team->id);
+                })
                 ->where('stock_levels.team_id', $team->id)
                 ->whereNull('products.deleted_at')
                 ->sum(DB::raw('stock_levels.quantity * products.cost_price'));
@@ -61,10 +64,10 @@ class DashboardController extends Controller
                 ->whereIn('status', ['draft', 'ordered', 'partially_received'])
                 ->sum('total_amount');
 
-            // 4. Low Stock Products & Alerts
+            // 4. Low Stock Products & Alerts (Tenant Isolated Subquery - SEC-G4-PRI-04)
             $lowStockBaseQuery = Product::where('team_id', $team->id)
                 ->where('is_active', true)
-                ->whereRaw('(SELECT COALESCE(SUM(quantity), 0) FROM stock_levels WHERE stock_levels.product_id = products.id) <= products.reorder_level');
+                ->whereRaw('(SELECT COALESCE(SUM(quantity), 0) FROM stock_levels WHERE stock_levels.product_id = products.id AND stock_levels.team_id = products.team_id) <= products.reorder_level');
 
             $lowStockCount = (clone $lowStockBaseQuery)->count();
 
@@ -75,7 +78,10 @@ class DashboardController extends Controller
 
             // 6. Warehouse Breakdown (Total stock count & value per location via SQL aggregation)
             $warehouseValuations = DB::table('stock_levels')
-                ->join('products', 'stock_levels.product_id', '=', 'products.id')
+                ->join('products', function ($join) use ($team) {
+                    $join->on('stock_levels.product_id', '=', 'products.id')
+                         ->where('products.team_id', '=', $team->id);
+                })
                 ->where('stock_levels.team_id', $team->id)
                 ->groupBy('stock_levels.warehouse_id')
                 ->select(
@@ -133,10 +139,16 @@ class DashboardController extends Controller
                 ]);
             }
 
-            // 8. Inventory Valuation Breakdown by Category (for Donut / Pie Chart)
+            // 8. Inventory Valuation Breakdown by Category (Hardened Tenant Joins - SEC-G4-PRI-04)
             $categoryDistribution = DB::table('product_categories')
-                ->join('products', 'product_categories.id', '=', 'products.category_id')
-                ->join('stock_levels', 'products.id', '=', 'stock_levels.product_id')
+                ->join('products', function ($join) use ($team) {
+                    $join->on('product_categories.id', '=', 'products.category_id')
+                         ->where('products.team_id', '=', $team->id);
+                })
+                ->join('stock_levels', function ($join) use ($team) {
+                    $join->on('products.id', '=', 'stock_levels.product_id')
+                         ->where('stock_levels.team_id', '=', $team->id);
+                })
                 ->where('product_categories.team_id', $team->id)
                 ->whereNull('products.deleted_at')
                 ->select(

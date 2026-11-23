@@ -388,7 +388,10 @@ class ReportController extends Controller
     protected function getValuationData(int $teamId): array
     {
         $totals = DB::table('stock_levels')
-            ->join('products', 'stock_levels.product_id', '=', 'products.id')
+            ->join('products', function ($join) use ($teamId) {
+                $join->on('stock_levels.product_id', '=', 'products.id')
+                     ->where('products.team_id', '=', $teamId);
+            })
             ->where('stock_levels.team_id', $teamId)
             ->selectRaw("
                 COALESCE(SUM(stock_levels.quantity), 0) as total_units,
@@ -404,8 +407,14 @@ class ReportController extends Controller
         $marginPercent = $totalRetail > 0 ? ($potentialProfit / $totalRetail) * 100 : 0;
 
         $warehouseBreakdown = DB::table('stock_levels')
-            ->join('products', 'stock_levels.product_id', '=', 'products.id')
-            ->join('warehouses', 'stock_levels.warehouse_id', '=', 'warehouses.id')
+            ->join('products', function ($join) use ($teamId) {
+                $join->on('stock_levels.product_id', '=', 'products.id')
+                     ->where('products.team_id', '=', $teamId);
+            })
+            ->join('warehouses', function ($join) use ($teamId) {
+                $join->on('stock_levels.warehouse_id', '=', 'warehouses.id')
+                     ->where('warehouses.team_id', '=', $teamId);
+            })
             ->where('stock_levels.team_id', $teamId)
             ->groupBy('warehouses.id', 'warehouses.name', 'warehouses.code')
             ->selectRaw("
@@ -420,8 +429,14 @@ class ReportController extends Controller
             ->get();
 
         $categoryBreakdown = DB::table('stock_levels')
-            ->join('products', 'stock_levels.product_id', '=', 'products.id')
-            ->leftJoin('product_categories', 'products.category_id', '=', 'product_categories.id')
+            ->join('products', function ($join) use ($teamId) {
+                $join->on('stock_levels.product_id', '=', 'products.id')
+                     ->where('products.team_id', '=', $teamId);
+            })
+            ->leftJoin('product_categories', function ($join) use ($teamId) {
+                $join->on('products.category_id', '=', 'product_categories.id')
+                     ->where('product_categories.team_id', '=', $teamId);
+            })
             ->where('stock_levels.team_id', $teamId)
             ->groupBy('product_categories.id', 'product_categories.name')
             ->selectRaw("
@@ -520,9 +535,18 @@ class ReportController extends Controller
     protected function getExpiryData(int $teamId, ?string $status = null, ?string $warehouseId = null, ?string $search = null): array
     {
         $query = DB::table('purchase_order_items')
-            ->join('purchase_orders', 'purchase_order_items.purchase_order_id', '=', 'purchase_orders.id')
-            ->join('products', 'purchase_order_items.product_id', '=', 'products.id')
-            ->leftJoin('warehouses', 'purchase_orders.warehouse_id', '=', 'warehouses.id')
+            ->join('purchase_orders', function ($join) use ($teamId) {
+                $join->on('purchase_order_items.purchase_order_id', '=', 'purchase_orders.id')
+                     ->where('purchase_orders.team_id', '=', $teamId);
+            })
+            ->join('products', function ($join) use ($teamId) {
+                $join->on('purchase_order_items.product_id', '=', 'products.id')
+                     ->where('products.team_id', '=', $teamId);
+            })
+            ->leftJoin('warehouses', function ($join) use ($teamId) {
+                $join->on('purchase_orders.warehouse_id', '=', 'warehouses.id')
+                     ->where('warehouses.team_id', '=', $teamId);
+            })
             ->where('purchase_orders.team_id', $teamId)
             ->whereNotNull('purchase_order_items.expiry_date')
             ->select([
@@ -628,8 +652,14 @@ class ReportController extends Controller
     protected function getAgingData(int $teamId, ?string $bracket = null, ?string $categoryId = null, ?string $search = null): array
     {
         $productsQuery = DB::table('products')
-            ->leftJoin('product_categories', 'products.category_id', '=', 'product_categories.id')
-            ->join('stock_levels', 'products.id', '=', 'stock_levels.product_id')
+            ->leftJoin('product_categories', function ($join) use ($teamId) {
+                $join->on('products.category_id', '=', 'product_categories.id')
+                     ->where('product_categories.team_id', '=', $teamId);
+            })
+            ->join('stock_levels', function ($join) use ($teamId) {
+                $join->on('products.id', '=', 'stock_levels.product_id')
+                     ->where('stock_levels.team_id', '=', $teamId);
+            })
             ->where('products.team_id', $teamId)
             ->where('products.is_active', true)
             ->groupBy('products.id', 'products.sku', 'products.name', 'products.unit', 'products.cost_price', 'products.unit_price', 'products.created_at', 'product_categories.name')
@@ -759,9 +789,18 @@ class ReportController extends Controller
         ?string $search = null
     ): array {
         $query = DB::table('sales_order_items')
-            ->join('sales_orders', 'sales_order_items.sales_order_id', '=', 'sales_orders.id')
-            ->join('products', 'sales_order_items.product_id', '=', 'products.id')
-            ->leftJoin('product_categories', 'products.category_id', '=', 'product_categories.id')
+            ->join('sales_orders', function ($join) use ($teamId) {
+                $join->on('sales_order_items.sales_order_id', '=', 'sales_orders.id')
+                     ->where('sales_orders.team_id', '=', $teamId);
+            })
+            ->join('products', function ($join) use ($teamId) {
+                $join->on('sales_order_items.product_id', '=', 'products.id')
+                     ->where('products.team_id', '=', $teamId);
+            })
+            ->leftJoin('product_categories', function ($join) use ($teamId) {
+                $join->on('products.category_id', '=', 'product_categories.id')
+                     ->where('product_categories.team_id', '=', $teamId);
+            })
             ->where('sales_orders.team_id', $teamId)
             ->whereNotIn('sales_orders.status', ['cancelled', 'draft'])
             ->groupBy('products.id', 'products.sku', 'products.name', 'product_categories.name')
@@ -894,7 +933,10 @@ class ReportController extends Controller
         ")->first();
 
         $recentSales = (clone $salesQ)
-            ->leftJoin('customers', 'sales_orders.customer_id', '=', 'customers.id')
+            ->leftJoin('customers', function ($join) use ($teamId) {
+                $join->on('sales_orders.customer_id', '=', 'customers.id')
+                     ->where('customers.team_id', '=', $teamId);
+            })
             ->select(
                 'sales_orders.id',
                 'sales_orders.order_number',
@@ -929,7 +971,10 @@ class ReportController extends Controller
         ")->first();
 
         $recentPurchases = (clone $purchQ)
-            ->leftJoin('suppliers', 'purchase_orders.supplier_id', '=', 'suppliers.id')
+            ->leftJoin('suppliers', function ($join) use ($teamId) {
+                $join->on('purchase_orders.supplier_id', '=', 'suppliers.id')
+                     ->where('suppliers.team_id', '=', $teamId);
+            })
             ->select(
                 'purchase_orders.id',
                 'purchase_orders.order_number',
@@ -960,7 +1005,10 @@ class ReportController extends Controller
         ")->first();
 
         $expensesByCategory = (clone $expQ)
-            ->leftJoin('expense_categories', 'expenses.expense_category_id', '=', 'expense_categories.id')
+            ->leftJoin('expense_categories', function ($join) use ($teamId) {
+                $join->on('expenses.expense_category_id', '=', 'expense_categories.id')
+                     ->where('expense_categories.team_id', '=', $teamId);
+            })
             ->select(
                 DB::raw("COALESCE(expense_categories.name, 'Uncategorized') as category_name"),
                 DB::raw("COALESCE(SUM(expenses.amount), 0) as total_amount"),
@@ -971,7 +1019,10 @@ class ReportController extends Controller
             ->get();
 
         $recentExpenses = (clone $expQ)
-            ->leftJoin('expense_categories', 'expenses.expense_category_id', '=', 'expense_categories.id')
+            ->leftJoin('expense_categories', function ($join) use ($teamId) {
+                $join->on('expenses.expense_category_id', '=', 'expense_categories.id')
+                     ->where('expense_categories.team_id', '=', $teamId);
+            })
             ->select(
                 'expenses.id',
                 'expenses.expense_number',

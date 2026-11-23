@@ -31,10 +31,22 @@ class SecureStorageService
     ];
 
     /**
+     * Hard in-service maximum upload file size ceiling (15 MB) - SEC-G3-POST-03.
+     */
+    public const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024; // 15 Megabytes
+
+    /**
      * Store a file securely in the tenant's private directory with strict extension and MIME verification.
      */
     public function storeTenantFile(int $teamId, UploadedFile $file, string $directory = 'documents'): string
     {
+        // 0. Enforce In-Service Hard File Size Ceiling (SEC-G3-POST-03)
+        $fileSize = $file->getSize();
+        if ($fileSize !== false && $fileSize > self::MAX_FILE_SIZE_BYTES) {
+            $maxMb = self::MAX_FILE_SIZE_BYTES / (1024 * 1024);
+            throw new BadRequestHttpException("Uploaded file exceeds the maximum allowed in-service size limit of {$maxMb}MB.");
+        }
+
         $extension = strtolower($file->getClientOriginalExtension());
 
         // 1. Strict Extension Allowlist

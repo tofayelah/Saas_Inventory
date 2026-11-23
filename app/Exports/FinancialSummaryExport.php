@@ -178,7 +178,10 @@ class FinancialSummarySalesSheet implements FromCollection, WithHeadings, WithMa
     public function collection(): Collection
     {
         $q = DB::table('sales_orders')
-            ->leftJoin('customers', 'sales_orders.customer_id', '=', 'customers.id')
+            ->leftJoin('customers', function ($join) {
+                $join->on('sales_orders.customer_id', '=', 'customers.id')
+                     ->where('customers.team_id', '=', $this->teamId);
+            })
             ->where('sales_orders.team_id', $this->teamId)
             ->whereNotIn('sales_orders.status', ['cancelled'])
             ->whereNull('sales_orders.deleted_at')
@@ -247,7 +250,10 @@ class FinancialSummaryPurchaseSheet implements FromCollection, WithHeadings, Wit
     public function collection(): Collection
     {
         $q = DB::table('purchase_orders')
-            ->leftJoin('suppliers', 'purchase_orders.supplier_id', '=', 'suppliers.id')
+            ->leftJoin('suppliers', function ($join) {
+                $join->on('purchase_orders.supplier_id', '=', 'suppliers.id')
+                     ->where('suppliers.team_id', '=', $this->teamId);
+            })
             ->where('purchase_orders.team_id', $this->teamId)
             ->whereNotIn('purchase_orders.status', ['cancelled'])
             ->whereNull('purchase_orders.deleted_at')
@@ -316,7 +322,10 @@ class FinancialSummaryExpenseSheet implements FromCollection, WithHeadings, With
     public function collection(): Collection
     {
         $q = DB::table('expenses')
-            ->leftJoin('expense_categories', 'expenses.expense_category_id', '=', 'expense_categories.id')
+            ->leftJoin('expense_categories', function ($join) {
+                $join->on('expenses.expense_category_id', '=', 'expense_categories.id')
+                     ->where('expense_categories.team_id', '=', $this->teamId);
+            })
             ->where('expenses.team_id', $this->teamId)
             ->select('expenses.*', 'expense_categories.name as category_name')
             ->orderByDesc('expenses.expense_date')
