@@ -12,6 +12,8 @@ class ChartOfAccountController extends Controller
 {
     public function index(Request $request)
     {
+        $this->authorize('viewAny', ChartOfAccount::class);
+
         $teamId = Auth::user()->current_team_id;
 
         $search = $request->input('search', '');
@@ -53,6 +55,8 @@ class ChartOfAccountController extends Controller
 
     public function store(Request $request)
     {
+        $this->authorize('create', ChartOfAccount::class);
+
         $user = Auth::user();
         $team = $user->currentTeam;
         $teamId = $user->current_team_id;
@@ -93,6 +97,8 @@ class ChartOfAccountController extends Controller
 
     public function update(Request $request, ChartOfAccount $account)
     {
+        $this->authorize('update', $account);
+
         $user = Auth::user();
         $team = $user->currentTeam;
         $teamId = $user->current_team_id;
@@ -116,6 +122,8 @@ class ChartOfAccountController extends Controller
 
     public function destroy(ChartOfAccount $account)
     {
+        $this->authorize('delete', $account);
+
         $user = Auth::user();
         $team = $user->currentTeam;
         $teamId = $user->current_team_id;
@@ -141,6 +149,8 @@ class ChartOfAccountController extends Controller
 
     public function initialize(Request $request, AccountingService $accountingService)
     {
+        $this->authorize('initialize', ChartOfAccount::class);
+
         $user = Auth::user();
         $team = $user->currentTeam;
         $teamId = $user->current_team_id;

@@ -16,6 +16,8 @@ class ProductReturnController extends Controller
 {
     public function index(Request $request)
     {
+        $this->authorize('viewAny', ProductReturn::class);
+
         $teamId = Auth::user()->current_team_id;
 
         $search = $request->input('search');
@@ -64,6 +66,8 @@ class ProductReturnController extends Controller
 
     public function store(Request $request, ReturnService $service)
     {
+        $this->authorize('create', ProductReturn::class);
+
         $teamId = Auth::user()->current_team_id;
 
         $validated = $request->validate([
@@ -111,6 +115,8 @@ class ProductReturnController extends Controller
 
     public function approve(ProductReturn $return, ReturnService $service)
     {
+        $this->authorize('approve', $return);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($return->team_id !== $teamId, 403);
 
@@ -121,6 +127,8 @@ class ProductReturnController extends Controller
 
     public function reject(Request $request, ProductReturn $return, ReturnService $service)
     {
+        $this->authorize('reject', $return);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($return->team_id !== $teamId, 403);
 
@@ -135,6 +143,8 @@ class ProductReturnController extends Controller
 
     public function complete(ProductReturn $return, ReturnService $service)
     {
+        $this->authorize('complete', $return);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($return->team_id !== $teamId, 403);
 

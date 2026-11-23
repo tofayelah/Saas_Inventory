@@ -50,12 +50,22 @@ class JetstreamServiceProvider extends ServiceProvider
             'read',
             'update',
             'delete',
-        ])->description('Administrator users can perform any action.');
+        ])->description('Administrator users can perform any operational action.');
 
-        Jetstream::role('editor', 'Editor', [
+        Jetstream::role('staff', 'Staff', [
             'read',
             'create',
             'update',
-        ])->description('Editor users have the ability to read, create, and update.');
+        ])->description('Staff users handle operational orders and stock.');
+
+        Jetstream::role('editor', 'Editor / Staff', [
+            'read',
+            'create',
+            'update',
+        ])->description('Editor users have operational access.');
+
+        Jetstream::role('viewer', 'Viewer', [
+            'read',
+        ])->description('Viewer users have read-only access to reports.');
     }
 }

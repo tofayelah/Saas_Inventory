@@ -18,6 +18,8 @@ class VendorDueController extends Controller
 {
     public function index(Request $request)
     {
+        $this->authorize('viewAny', Supplier::class);
+
         $teamId = Auth::user()->current_team_id;
         $search = $request->input('search', '');
         $filter = $request->input('filter', 'all_with_dues'); // all_with_dues, fully_paid, all
@@ -94,6 +96,8 @@ class VendorDueController extends Controller
 
     public function pay(Request $request, PurchaseOrderService $service)
     {
+        $this->authorize('create', PurchaseOrder::class);
+
         $teamId = Auth::user()->current_team_id;
 
         if (!$request->filled('financial_account_id')) {

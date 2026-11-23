@@ -274,7 +274,7 @@ class FinancialAccountTest extends TestCase
             'personal_team' => false,
         ]);
 
-        $otherAccount = FinancialAccount::create([
+        $otherAccount = FinancialAccount::forceCreate([
             'team_id' => $otherTeam->id,
             'name' => 'Secret Vault Account',
             'type' => 'cash',
@@ -282,6 +282,7 @@ class FinancialAccountTest extends TestCase
             'is_active' => true,
         ]);
 
+        // Attempt to update other tenant's account (Route Model Binding scopes by tenant, returning 404)
         // Attempt to update other tenant's account (Route Model Binding scopes by tenant, returning 404)
         $response = $this->put(route('bank-accounts.update', $otherAccount->id), [
             'name' => 'Hijacked Account',

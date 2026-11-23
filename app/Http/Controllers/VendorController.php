@@ -20,6 +20,8 @@ class VendorController extends Controller
 {
     public function index(Request $request)
     {
+        $this->authorize('viewAny', Supplier::class);
+
         $teamId = Auth::user()->current_team_id;
         $search = $request->input('search');
         $status = $request->input('status');
@@ -62,6 +64,8 @@ class VendorController extends Controller
 
     public function store(Request $request)
     {
+        $this->authorize('create', Supplier::class);
+
         $teamId = Auth::user()->current_team_id;
 
         $validated = $request->validate([
@@ -181,6 +185,8 @@ class VendorController extends Controller
 
     public function update(Request $request, Supplier $vendor)
     {
+        $this->authorize('update', $vendor);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($vendor->team_id !== $teamId, 403);
 
@@ -295,6 +301,8 @@ class VendorController extends Controller
 
     public function toggleActive(Supplier $vendor)
     {
+        $this->authorize('toggleActive', $vendor);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($vendor->team_id !== $teamId, 403);
 
@@ -306,6 +314,8 @@ class VendorController extends Controller
 
     public function destroy(Supplier $vendor)
     {
+        $this->authorize('delete', $vendor);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($vendor->team_id !== $teamId, 403);
 

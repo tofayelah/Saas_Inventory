@@ -27,9 +27,16 @@ class TenantScope implements \Illuminate\Database\Eloquent\Scope
         // 1. Resolve tenant ID from TenantContext or fallback to authenticated user's current team
         $tenantId = $tenantContext->getTenantId();
 
-        if (!$tenantId && Auth::check() && Auth::user()->current_team_id) {
-            $tenantId = (int) Auth::user()->current_team_id;
-            $tenantContext->setTenant($tenantId);
+        if (Auth::check() && Auth::user()->current_team_id) {
+            $userTeamId = (int) Auth::user()->current_team_id;
+            // Only synchronize in console/testing if not currently executing inside an explicit executeAsTenant callback
+            if (!$tenantContext->isHttpRequest() && !$tenantContext->isExplicit() && $tenantId !== $userTeamId) {
+                $tenantContext->setTenant($userTeamId);
+                $tenantId = $userTeamId;
+            } elseif (!$tenantId) {
+                $tenantContext->setTenant($userTeamId);
+                $tenantId = $userTeamId;
+            }
         }
 
         // 2. If tenant ID is resolved, apply strict tenant constraint

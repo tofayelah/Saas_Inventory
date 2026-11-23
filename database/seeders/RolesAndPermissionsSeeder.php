@@ -10,6 +10,24 @@ use Spatie\Permission\PermissionRegistrar;
 class RolesAndPermissionsSeeder extends Seeder
 {
     /**
+     * Standard permissions list across all tenants.
+     */
+    public static function getStandardPermissions(): array
+    {
+        return [
+            'manage-team',
+            'manage-billing',
+            'manage-warehouses',
+            'manage-products',
+            'manage-stock',
+            'manage-orders',
+            'view-reports',
+            'manage-accounting',
+            'manage-hr',
+        ];
+    }
+
+    /**
      * Run the database seeds.
      */
     public function run(): void
@@ -17,41 +35,21 @@ class RolesAndPermissionsSeeder extends Seeder
         // Reset cached roles and permissions
         app()[PermissionRegistrar::class]->forgetCachedPermissions();
 
-        // Standard permissions across all tenants
-        $permissions = [
-            'manage-team',
-            'manage-billing',
-            'manage-warehouses',
-            'manage-products',
-            'manage-stock',
-            'manage-orders',
-            'view-reports',
-        ];
-
-        foreach ($permissions as $permissionName) {
+        foreach (static::getStandardPermissions() as $permissionName) {
             Permission::firstOrCreate(['name' => $permissionName, 'guard_name' => 'web']);
         }
     }
 
     /**
-     * Helper to seed standard roles for a given team/tenant.
+     * Helper to seed standard roles and permissions for a given team/tenant.
      */
     public static function seedRolesForTeam(int $teamId): void
     {
         app()[PermissionRegistrar::class]->forgetCachedPermissions();
 
-        // Standard permissions across all tenants
-        $permissions = [
-            'manage-team',
-            'manage-billing',
-            'manage-warehouses',
-            'manage-products',
-            'manage-stock',
-            'manage-orders',
-            'view-reports',
-        ];
+        $allPermissions = static::getStandardPermissions();
 
-        foreach ($permissions as $permissionName) {
+        foreach ($allPermissions as $permissionName) {
             Permission::firstOrCreate(['name' => $permissionName, 'guard_name' => 'web']);
         }
 
@@ -61,9 +59,9 @@ class RolesAndPermissionsSeeder extends Seeder
             'guard_name' => 'web',
             'team_id' => $teamId,
         ]);
-        $ownerRole->syncPermissions($permissions);
+        $ownerRole->syncPermissions($allPermissions);
 
-        // 2. Admin Role - Has operational & management permissions (excluding billing/team deletion)
+        // 2. Admin Role - Operational & managerial permissions (excluding billing and team ownership)
         $adminRole = Role::firstOrCreate([
             'name' => 'admin',
             'guard_name' => 'web',
@@ -75,6 +73,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'manage-stock',
             'manage-orders',
             'view-reports',
+            'manage-accounting',
+            'manage-hr',
         ]);
 
         // 3. Staff Role - Daily stock operations & orders
@@ -88,7 +88,18 @@ class RolesAndPermissionsSeeder extends Seeder
             'manage-orders',
         ]);
 
-        // 4. Viewer Role - Read-only reporting access
+        // 4. Editor Role - Alias for staff role for backward compatibility
+        $editorRole = Role::firstOrCreate([
+            'name' => 'editor',
+            'guard_name' => 'web',
+            'team_id' => $teamId,
+        ]);
+        $editorRole->syncPermissions([
+            'manage-stock',
+            'manage-orders',
+        ]);
+
+        // 5. Viewer Role - Read-only reporting access
         $viewerRole = Role::firstOrCreate([
             'name' => 'viewer',
             'guard_name' => 'web',

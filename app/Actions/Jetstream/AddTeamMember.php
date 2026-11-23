@@ -33,6 +33,13 @@ class AddTeamMember implements AddsTeamMembers
             $newTeamMember, ['role' => $role]
         );
 
+        $spatieRole = $role === 'editor' ? 'staff' : ($role ?: 'staff');
+        \Database\Seeders\RolesAndPermissionsSeeder::seedRolesForTeam($team->id);
+        setPermissionsTeamId($team->id);
+        $newTeamMember->syncRoles([$spatieRole]);
+        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+        \Illuminate\Support\Facades\Cache::forget("user_auth_rp_{$newTeamMember->id}_{$team->id}");
+
         TeamMemberAdded::dispatch($team, $newTeamMember);
     }
 

@@ -79,6 +79,20 @@ class UserFactory extends Factory
                 ])
                 ->when(is_callable($callback), $callback),
             'ownedTeams'
-        );
+        )->afterCreating(function (User $user) {
+            $team = $user->ownedTeams->first();
+            if ($team) {
+                if (!$user->current_team_id) {
+                    $user->forceFill(['current_team_id' => $team->id])->save();
+                }
+                if (class_exists(\Database\Seeders\RolesAndPermissionsSeeder::class)) {
+                    \Database\Seeders\RolesAndPermissionsSeeder::seedRolesForTeam($team->id);
+                }
+                if (function_exists('setPermissionsTeamId')) {
+                    setPermissionsTeamId($team->id);
+                    $user->assignRole('owner');
+                }
+            }
+        });
     }
 }

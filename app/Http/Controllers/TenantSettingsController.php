@@ -18,10 +18,15 @@ class TenantSettingsController extends Controller
 {
     public function index(Request $request)
     {
-        $team = Auth::user()->currentTeam;
+        $user = Auth::user();
+        $team = $user->currentTeam;
 
         if (!$team) {
             abort(403, 'No active tenant workspace selected.');
+        }
+
+        if (!$user->isSuperAdmin() && !$user->ownsTeam($team) && !$user->hasRole('admin')) {
+            abort(403, 'Unauthorized. Only organization owners or administrators can view company settings.');
         }
 
         return Inertia::render('Settings/Company', [

@@ -19,6 +19,10 @@ class TenantSubscriptionController extends Controller
         $user = Auth::user();
         $team = $user->currentTeam;
 
+        if (!$user->isSuperAdmin() && !$user->ownsTeam($team) && !$user->can('manage-billing')) {
+            abort(403, 'Unauthorized. Only organization owners can access billing and subscription management.');
+        }
+
         $usage = $subscriptionService->getUsage($team);
         $plans = Plan::where('is_active', true)->where('slug', '!=', 'trial')->orderBy('sort_order')->get();
 
@@ -46,7 +50,12 @@ class TenantSubscriptionController extends Controller
      */
     public function submitPayment(Request $request, SubscriptionService $subscriptionService)
     {
-        $team = Auth::user()->currentTeam;
+        $user = Auth::user();
+        $team = $user->currentTeam;
+
+        if (!$user->isSuperAdmin() && !$user->ownsTeam($team) && !$user->can('manage-billing')) {
+            abort(403, 'Unauthorized. Only organization owners can submit subscription payments.');
+        }
 
         $validated = $request->validate([
             'plan_id' => 'required|exists:plans,id',

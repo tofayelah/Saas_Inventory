@@ -14,6 +14,8 @@ class BrandController extends Controller
 {
     public function index(Request $request)
     {
+        $this->authorize('viewAny', Brand::class);
+
         $teamId = Auth::user()->current_team_id;
         $search = trim($request->query('search', ''));
 
@@ -71,6 +73,8 @@ class BrandController extends Controller
 
     public function store(Request $request)
     {
+        $this->authorize('create', Brand::class);
+
         $teamId = Auth::user()->current_team_id;
 
         $validated = $request->validate([
@@ -104,6 +108,8 @@ class BrandController extends Controller
 
     public function update(Request $request, Brand $brand)
     {
+        $this->authorize('update', $brand);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($brand->team_id !== $teamId, 403);
 
@@ -122,6 +128,8 @@ class BrandController extends Controller
 
     public function destroy(Brand $brand)
     {
+        $this->authorize('delete', $brand);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($brand->team_id !== $teamId, 403);
 

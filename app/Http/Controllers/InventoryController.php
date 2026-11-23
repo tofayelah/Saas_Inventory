@@ -17,6 +17,8 @@ class InventoryController extends Controller
 {
     public function index(Request $request)
     {
+        $this->authorize('viewAny', Product::class);
+
         $teamId = Auth::user()->current_team_id;
         $search = trim($request->query('search', ''));
         $warehouseId = $request->query('warehouse_id');
@@ -222,6 +224,8 @@ class InventoryController extends Controller
         $product = Product::where('team_id', $teamId)->findOrFail($validated['product_id']);
         $warehouse = Warehouse::where('team_id', $teamId)->findOrFail($validated['warehouse_id']);
 
+        $this->authorize('inspectStock', $product);
+
         try {
             $stockService->adjust(
                 warehouseId: $warehouse->id,
@@ -251,6 +255,8 @@ class InventoryController extends Controller
         $product = Product::where('team_id', $teamId)->findOrFail($validated['product_id']);
         $fromWh = Warehouse::where('team_id', $teamId)->findOrFail($validated['from_warehouse_id']);
         $toWh = Warehouse::where('team_id', $teamId)->findOrFail($validated['to_warehouse_id']);
+
+        $this->authorize('inspectStock', $product);
 
         try {
             $stockService->transfer(

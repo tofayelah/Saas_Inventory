@@ -29,7 +29,12 @@ class SetTenantContext
         if ($tenant) {
             $this->tenantContext->setTenant($tenant);
         } else {
+            // Keep privileged state intact if set by EnsureSuperAdmin
+            $wasPrivileged = $this->tenantContext->isPrivileged();
             $this->tenantContext->clear();
+            if ($wasPrivileged) {
+                $this->tenantContext->setPrivileged(true);
+            }
             $this->tenantContext->setHttpRequestContext(true);
         }
 

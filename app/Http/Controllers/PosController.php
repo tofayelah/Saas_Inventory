@@ -48,6 +48,8 @@ class PosController extends Controller
      */
     public function index(Request $request, FinancialAccountService $accountService)
     {
+        $this->authorize('viewAny', SalesOrder::class);
+
         $teamId = $this->resolveTeamId();
 
         // Ensure default financial accounts exist
@@ -197,6 +199,8 @@ class PosController extends Controller
      */
     public function store(Request $request, SalesOrderService $salesService)
     {
+        $this->authorize('create', SalesOrder::class);
+
         $teamId = $this->resolveTeamId();
         $team = Auth::user()?->currentTeam;
 
@@ -425,6 +429,8 @@ class PosController extends Controller
      */
     public function storeCustomer(Request $request)
     {
+        $this->authorize('create', Customer::class);
+
         $teamId = $this->resolveTeamId();
 
         $validated = $request->validate([
@@ -499,6 +505,8 @@ class PosController extends Controller
         }
 
         abort_if(!$order, 404, 'No orders found.');
+
+        $this->authorize('view', $order);
 
         $team = $order->team ?? Auth::user()->currentTeam;
 

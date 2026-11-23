@@ -25,8 +25,17 @@ trait BelongsToTenant
         static::creating(function ($model) {
             /** @var TenantContext $tenantContext */
             $tenantContext = app(TenantContext::class);
-            $activeTenantId = $tenantContext->getTenantId()
-                ?: (Auth::check() ? (int) Auth::user()->current_team_id : null);
+            $activeTenantId = $tenantContext->getTenantId();
+            if (Auth::check() && Auth::user()->current_team_id) {
+                $userTeamId = (int) Auth::user()->current_team_id;
+                if (!$tenantContext->isHttpRequest() && !$tenantContext->isExplicit() && $activeTenantId !== $userTeamId) {
+                    $tenantContext->setTenant($userTeamId);
+                    $activeTenantId = $userTeamId;
+                } elseif (!$activeTenantId) {
+                    $tenantContext->setTenant($userTeamId);
+                    $activeTenantId = $userTeamId;
+                }
+            }
 
             if ($activeTenantId) {
                 // In HTTP requests, strictly enforce active tenant context regardless of any client input

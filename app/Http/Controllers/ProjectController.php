@@ -22,6 +22,8 @@ class ProjectController extends Controller
 {
     public function index(Request $request, FinancialAccountService $accountService)
     {
+        $this->authorize('viewAny', Project::class);
+
         $teamId = Auth::user()->current_team_id;
 
         $search = $request->input('search');
@@ -78,6 +80,8 @@ class ProjectController extends Controller
 
     public function create(FinancialAccountService $accountService)
     {
+        $this->authorize('create', Project::class);
+
         $teamId = Auth::user()->current_team_id;
 
         $clients = Client::where('team_id', $teamId)->where('is_active', true)->orderBy('name')->get();
@@ -108,6 +112,8 @@ class ProjectController extends Controller
 
     public function store(Request $request, ProjectService $service)
     {
+        $this->authorize('create', Project::class);
+
         $user = Auth::user();
         $teamId = $user->current_team_id;
 
@@ -179,6 +185,8 @@ class ProjectController extends Controller
 
     public function show(Project $project, FinancialAccountService $accountService)
     {
+        $this->authorize('view', $project);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($project->team_id !== $teamId, 403, 'Unauthorized access to project.');
 
@@ -234,6 +242,8 @@ class ProjectController extends Controller
 
     public function edit(Project $project)
     {
+        $this->authorize('update', $project);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($project->team_id !== $teamId, 403);
 
@@ -248,6 +258,8 @@ class ProjectController extends Controller
 
     public function update(Request $request, Project $project, ProjectService $service)
     {
+        $this->authorize('update', $project);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($project->team_id !== $teamId, 403);
 
@@ -272,6 +284,8 @@ class ProjectController extends Controller
 
     public function addItem(Request $request, Project $project, ProjectService $service)
     {
+        $this->authorize('addItem', $project);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($project->team_id !== $teamId, 403);
 
@@ -291,6 +305,8 @@ class ProjectController extends Controller
 
     public function removeItem(Project $project, ProjectItem $item, ProjectService $service)
     {
+        $this->authorize('removeItem', $project);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($project->team_id !== $teamId || $item->project_id !== $project->id, 403);
 
@@ -301,6 +317,8 @@ class ProjectController extends Controller
 
     public function addCost(Request $request, Project $project, ProjectService $service)
     {
+        $this->authorize('addCost', $project);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($project->team_id !== $teamId, 403);
 
@@ -321,6 +339,8 @@ class ProjectController extends Controller
 
     public function removeCost(Project $project, ProjectCost $cost, ProjectService $service)
     {
+        $this->authorize('removeCost', $project);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($project->team_id !== $teamId || $cost->project_id !== $project->id, 403);
 
@@ -331,6 +351,8 @@ class ProjectController extends Controller
 
     public function createBill(Request $request, Project $project, ProjectService $service)
     {
+        $this->authorize('createBill', $project);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($project->team_id !== $teamId, 403);
 
@@ -348,6 +370,8 @@ class ProjectController extends Controller
 
     public function recordPayment(Request $request, Project $project, ProjectService $service)
     {
+        $this->authorize('pay', $project);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($project->team_id !== $teamId, 403);
 
@@ -375,6 +399,8 @@ class ProjectController extends Controller
 
     public function transitionStatus(Request $request, Project $project, ProjectService $service)
     {
+        $this->authorize('transition', $project);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($project->team_id !== $teamId, 403);
 
@@ -389,6 +415,8 @@ class ProjectController extends Controller
 
     public function destroy(Project $project)
     {
+        $this->authorize('delete', $project);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($project->team_id !== $teamId, 403);
 

@@ -12,6 +12,8 @@ class EmployeeController extends Controller
 {
     public function index(Request $request)
     {
+        $this->authorize('viewAny', Employee::class);
+
         $teamId = Auth::user()->current_team_id;
 
         $search = $request->input('search');
@@ -58,6 +60,8 @@ class EmployeeController extends Controller
 
     public function store(Request $request, HrService $service)
     {
+        $this->authorize('create', Employee::class);
+
         $team = $request->user()?->currentTeam;
         if ($team && ! app(\App\Services\SubscriptionService::class)->canAddEmployee($team)) {
             return redirect()->back()->with('error', 'You have reached the maximum employee limit for your subscription plan. Please upgrade your plan.');
@@ -86,6 +90,8 @@ class EmployeeController extends Controller
 
     public function update(Request $request, Employee $employee, HrService $service)
     {
+        $this->authorize('update', $employee);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($employee->team_id !== $teamId, 403);
 
@@ -111,6 +117,8 @@ class EmployeeController extends Controller
 
     public function destroy(Employee $employee)
     {
+        $this->authorize('delete', $employee);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($employee->team_id !== $teamId, 403);
 

@@ -21,6 +21,8 @@ class ServiceTicketController extends Controller
 {
     public function index(Request $request, FinancialAccountService $accountService)
     {
+        $this->authorize('viewAny', ServiceTicket::class);
+
         $teamId = Auth::user()->current_team_id;
 
         $search = $request->input('search');
@@ -78,6 +80,8 @@ class ServiceTicketController extends Controller
 
     public function create()
     {
+        $this->authorize('create', ServiceTicket::class);
+
         $teamId = Auth::user()->current_team_id;
 
         $customers = Customer::where('team_id', $teamId)->where('is_active', true)->orderBy('name')->get();
@@ -104,6 +108,8 @@ class ServiceTicketController extends Controller
 
     public function store(Request $request, ServiceTicketService $service)
     {
+        $this->authorize('create', ServiceTicket::class);
+
         $teamId = Auth::user()->current_team_id;
 
         $team = Auth::user()->currentTeam;
@@ -154,6 +160,8 @@ class ServiceTicketController extends Controller
 
     public function show(ServiceTicket $ticket, FinancialAccountService $accountService)
     {
+        $this->authorize('view', $ticket);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($ticket->team_id !== $teamId, 403);
 
@@ -178,6 +186,8 @@ class ServiceTicketController extends Controller
 
     public function edit(ServiceTicket $ticket)
     {
+        $this->authorize('update', $ticket);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($ticket->team_id !== $teamId, 403);
 
@@ -193,6 +203,8 @@ class ServiceTicketController extends Controller
 
     public function update(Request $request, ServiceTicket $ticket, ServiceTicketService $service)
     {
+        $this->authorize('update', $ticket);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($ticket->team_id !== $teamId, 403);
 
@@ -240,6 +252,8 @@ class ServiceTicketController extends Controller
 
     public function addPart(Request $request, ServiceTicket $ticket, ServiceTicketService $service)
     {
+        $this->authorize('addPart', $ticket);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($ticket->team_id !== $teamId, 403);
 
@@ -259,6 +273,8 @@ class ServiceTicketController extends Controller
 
     public function removePart(ServiceTicket $ticket, ServiceTicketItem $item, ServiceTicketService $service)
     {
+        $this->authorize('removePart', $ticket);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($ticket->team_id !== $teamId || $item->service_ticket_id !== $ticket->id, 403);
 
@@ -269,6 +285,8 @@ class ServiceTicketController extends Controller
 
     public function transitionStatus(Request $request, ServiceTicket $ticket, ServiceTicketService $service)
     {
+        $this->authorize('transition', $ticket);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($ticket->team_id !== $teamId, 403);
 
@@ -283,6 +301,8 @@ class ServiceTicketController extends Controller
 
     public function recordPayment(Request $request, ServiceTicket $ticket, ServiceTicketService $service)
     {
+        $this->authorize('pay', $ticket);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($ticket->team_id !== $teamId, 403);
 
@@ -306,6 +326,8 @@ class ServiceTicketController extends Controller
 
     public function destroy(ServiceTicket $ticket)
     {
+        $this->authorize('delete', $ticket);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($ticket->team_id !== $teamId, 403);
 

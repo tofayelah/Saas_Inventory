@@ -30,7 +30,12 @@ class ReportController extends Controller
 {
     public function index(Request $request): Response
     {
-        $team = Auth::user()->currentTeam;
+        $user = Auth::user();
+        if (!$user->isSuperAdmin() && !$user->ownsTeam($user->currentTeam) && !$user->can('view-reports')) {
+            abort(403, 'Unauthorized. You do not have permission to view business reports.');
+        }
+
+        $team = $user->currentTeam;
         $currencySymbol = $team->currency_symbol ?: '$';
 
         $activeTab = $request->input('tab', 'valuation');
@@ -115,7 +120,12 @@ class ReportController extends Controller
 
     public function downloadPdf(Request $request)
     {
-        $team = Auth::user()->currentTeam;
+        $user = Auth::user();
+        if (!$user->isSuperAdmin() && !$user->ownsTeam($user->currentTeam) && !$user->can('view-reports')) {
+            abort(403, 'Unauthorized. You do not have permission to download reports.');
+        }
+
+        $team = $user->currentTeam;
         $currencySymbol = $team->currency_symbol ?: '৳';
         $tab = $request->input('tab', 'valuation');
 
@@ -246,7 +256,12 @@ class ReportController extends Controller
 
     public function downloadExcel(Request $request)
     {
-        $team = Auth::user()->currentTeam;
+        $user = Auth::user();
+        if (!$user->isSuperAdmin() && !$user->ownsTeam($user->currentTeam) && !$user->can('view-reports')) {
+            abort(403, 'Unauthorized. You do not have permission to download reports.');
+        }
+
+        $team = $user->currentTeam;
         $tab = $request->input('tab', 'valuation');
 
         $movementType = $request->input('movement_type', '');

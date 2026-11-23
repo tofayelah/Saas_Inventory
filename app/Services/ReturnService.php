@@ -26,10 +26,11 @@ class ReturnService
             throw new InvalidStockOperationException("Return request must contain at least one line item.");
         }
 
-        return DB::transaction(function () use ($data, $items) {
-            $teamId = $data['team_id'] ?? Auth::user()?->current_team_id;
+        $teamId = $data['team_id'] ?? Auth::user()?->current_team_id;
 
-            $salesOrder = SalesOrder::where('team_id', $teamId)->with('items')->findOrFail($data['sales_order_id']);
+        $executionCallback = function () use ($data, $items, $teamId) {
+            return DB::transaction(function () use ($data, $items, $teamId) {
+                $salesOrder = SalesOrder::where('team_id', $teamId)->with('items')->findOrFail($data['sales_order_id']);
 
             foreach ($items as $item) {
                 $orderItemId = $item['sales_order_item_id'] ?? null;
@@ -95,7 +96,14 @@ class ReturnService
 
             return $return;
         });
+    };
+
+    if ($teamId && app(\App\Services\TenantContext::class)->getTenantId() !== (int) $teamId) {
+        return app(\App\Services\TenantContext::class)->executeAsTenant((int) $teamId, $executionCallback);
     }
+
+    return $executionCallback();
+}
 
     /**
      * Manager approves the return request.

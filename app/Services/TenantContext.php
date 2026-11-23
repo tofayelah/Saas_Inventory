@@ -11,6 +11,15 @@ class TenantContext
     protected ?Team $tenant = null;
     protected bool $isPrivileged = false;
     protected bool $isHttpRequest = false;
+    protected int $explicitDepth = 0;
+
+    /**
+     * Check if executing within an explicit executeAsTenant block.
+     */
+    public function isExplicit(): bool
+    {
+        return $this->explicitDepth > 0;
+    }
 
     /**
      * Set the current active tenant by Team model or integer ID.
@@ -73,6 +82,15 @@ class TenantContext
     }
 
     /**
+     * Set privileged mode directly.
+     */
+    public function setPrivileged(bool $privileged): self
+    {
+        $this->isPrivileged = $privileged;
+        return $this;
+    }
+
+    /**
      * Mark whether the current execution is within an HTTP request lifecycle.
      */
     public function setHttpRequestContext(bool $isHttp): self
@@ -98,6 +116,7 @@ class TenantContext
         $this->tenant = null;
         $this->isPrivileged = false;
         $this->isHttpRequest = false;
+        $this->explicitDepth = 0;
 
         if (function_exists('setPermissionsTeamId')) {
             setPermissionsTeamId(null);
@@ -113,11 +132,13 @@ class TenantContext
         $previousTenant = $this->tenant;
         $previousPrivileged = $this->isPrivileged;
 
+        $this->explicitDepth++;
         try {
             $this->setTenant($tenant);
             $this->isPrivileged = false;
             return $callback();
         } finally {
+            $this->explicitDepth--;
             $this->tenantId = $previousTenantId;
             $this->tenant = $previousTenant;
             $this->isPrivileged = $previousPrivileged;
