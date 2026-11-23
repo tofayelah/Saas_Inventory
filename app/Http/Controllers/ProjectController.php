@@ -122,6 +122,12 @@ class ProjectController extends Controller
         }
 
         $rules = [
+            'project_code' => [
+                'nullable',
+                'string',
+                'max:50',
+                Rule::unique('projects', 'project_code')->where(fn ($q) => $q->where('team_id', $teamId)),
+            ],
             'client_mode' => 'required|in:existing,new',
             'name' => 'required|string|max:255',
             'status' => 'required|in:planning,in_progress,on_hold,completed,cancelled',
@@ -264,6 +270,15 @@ class ProjectController extends Controller
         abort_if($project->team_id !== $teamId, 403);
 
         $validated = $request->validate([
+            'project_code' => [
+                'sometimes',
+                'required',
+                'string',
+                'max:50',
+                Rule::unique('projects', 'project_code')
+                    ->where(fn ($q) => $q->where('team_id', $teamId))
+                    ->ignore($project->id),
+            ],
             'client_id' => ['required', Rule::exists('clients', 'id')->where('team_id', $teamId)],
             'name' => 'required|string|max:255',
             'status' => 'required|in:planning,in_progress,on_hold,completed,cancelled',
