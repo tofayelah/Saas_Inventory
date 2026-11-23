@@ -13,10 +13,12 @@ use App\Services\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
+use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 use Tests\TestCase;
 
 class StorageAndApiSecurityTest extends TestCase
@@ -90,7 +92,7 @@ class StorageAndApiSecurityTest extends TestCase
         $permManageOrders = Permission::firstOrCreate(['name' => 'manage-orders', 'team_id' => $this->tenantA->id]);
 
         $ownerRoleA->syncPermissions([$permManageProducts, $permViewReports, $permManageCustomers, $permManageOrders]);
-        $staffRoleA->syncPermissions([$permViewReports]); // Staff can view reports/products, but cannot manage/write products
+        $staffRoleA->syncPermissions([$permViewReports]); // Staff has view-reports, but not manage-products
 
         $this->ownerA->assignRole($ownerRoleA);
         $this->staffA->assignRole($staffRoleA);
@@ -147,7 +149,6 @@ class StorageAndApiSecurityTest extends TestCase
      */
     public function test_unauthenticated_user_cannot_access_tenant_storage_via_fallback(): void
     {
-        // Unauthenticated request to /storage/tenants/1/...
         $response = $this->get('/storage/tenants/1/letterheads/logo.png');
         $this->assertEquals(403, $response->status());
     }
@@ -165,7 +166,7 @@ class StorageAndApiSecurityTest extends TestCase
             'file' => $maliciousFile,
         ]);
 
-        $response->assertStatus(302); // Validation error redirect
+        $response->assertStatus(302);
         $response->assertSessionHasErrors(['file']);
     }
 
@@ -174,7 +175,6 @@ class StorageAndApiSecurityTest extends TestCase
      */
     public function test_sanctum_token_is_strictly_bound_to_tenant(): void
     {
-        // Create products in Tenant A and Tenant B
         Product::forceCreate([
             'team_id' => $this->tenantA->id,
             'name' => 'Product Alpha 1',
@@ -191,20 +191,17 @@ class StorageAndApiSecurityTest extends TestCase
             'is_active' => true,
         ]);
 
-        // Issue token for Tenant A
         $newAccessToken = $this->ownerA->createTenantToken($this->tenantA->id, 'Alpha API Key', ['*']);
         $plainToken = $newAccessToken->plainTextToken;
 
-        // Verify token in DB has team_id set
         $this->assertEquals($this->tenantA->id, $newAccessToken->accessToken->team_id);
 
-        // Make API request with Bearer token
         $response = $this->withHeader('Authorization', 'Bearer ' . $plainToken)
             ->getJson(route('api.v1.products.index'));
 
         $response->assertOk();
         $response->assertJsonFragment(['name' => 'Product Alpha 1']);
-        $response->assertJsonMissing(['name' => 'Product Beta 1']); // Tenant B product strictly invisible
+        $response->assertJsonMissing(['name' => 'Product Beta 1']);
     }
 
     /**
@@ -215,7 +212,6 @@ class StorageAndApiSecurityTest extends TestCase
         $newAccessToken = $this->ownerA->createTenantToken($this->tenantA->id, 'Alpha API Key', ['*']);
         $plainToken = $newAccessToken->plainTextToken;
 
-        // Try to access Tenant B by supplying X-Tenant-ID header
         $responseHeader = $this->withHeader('Authorization', 'Bearer ' . $plainToken)
             ->withHeader('X-Tenant-ID', (string) $this->tenantB->id)
             ->getJson(route('api.v1.products.index'));
@@ -223,7 +219,6 @@ class StorageAndApiSecurityTest extends TestCase
         $responseHeader->assertStatus(403);
         $responseHeader->assertJsonFragment(['error' => 'CrossTenantAccessBlocked']);
 
-        // Try to access Tenant B by supplying team_id query parameter
         $responseQuery = $this->withHeader('Authorization', 'Bearer ' . $plainToken)
             ->getJson(route('api.v1.products.index', ['team_id' => $this->tenantB->id]));
 
@@ -239,7 +234,6 @@ class StorageAndApiSecurityTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage("User does not have membership in tenant");
 
-        // Owner A tries to create a token for Tenant B
         $this->ownerA->createTenantToken($this->tenantB->id, 'Rogue Token', ['*']);
     }
 
@@ -251,12 +245,10 @@ class StorageAndApiSecurityTest extends TestCase
         // 1. Staff A with limited token ability 'products:read' only
         $readOnlyToken = $this->staffA->createTenantToken($this->tenantA->id, 'Read Only Token', ['products:read'])->plainTextToken;
 
-        // Reading products succeeds
         $this->withHeader('Authorization', 'Bearer ' . $readOnlyToken)
             ->getJson(route('api.v1.products.index'))
             ->assertOk();
 
-        // Storing product fails due to missing token ability 'products:write'
         $this->withHeader('Authorization', 'Bearer ' . $readOnlyToken)
             ->postJson(route('api.v1.products.store'), [
                 'name' => 'New Product',
@@ -287,7 +279,6 @@ class StorageAndApiSecurityTest extends TestCase
     {
         $token = $this->ownerA->createTenantToken($this->tenantA->id, 'Active Token', ['*'])->plainTextToken;
 
-        // Suspend Tenant A
         $this->tenantA->update(['status' => 'suspended']);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
@@ -323,9 +314,9 @@ class StorageAndApiSecurityTest extends TestCase
             'status' => 'pending',
         ]);
 
-        // Attacker attempts to validate payment with amount 100 instead of 2000
         $response = $this->postJson(route('sslcommerz.ipn'), [
             'tran_id' => 'PAY-TEST-001',
+            'val_id' => 'VAL-001',
             'amount' => 100.00,
             'currency' => 'BDT',
             'status' => 'VALID',
@@ -339,16 +330,16 @@ class StorageAndApiSecurityTest extends TestCase
     }
 
     /**
-     * TEST 11: Webhook signature verification in production mode.
+     * TEST 11: Authoritative server-to-server validation approves payment (SEC-G3-REV-01).
      */
-    public function test_webhook_signature_verification_in_production(): void
+    public function test_authoritative_server_to_server_validation_approves_payment(): void
     {
         Config::set('services.sslcommerz.sandbox', false);
         Config::set('services.sslcommerz.store_password', 'secret_store_pass');
 
         $plan = Plan::forceCreate([
             'name' => 'Pro Plan',
-            'slug' => 'pro-sig',
+            'slug' => 'pro-auth',
             'price_bdt' => 3000,
             'annual_price_bdt' => 30000,
             'max_products' => 1000,
@@ -358,7 +349,7 @@ class StorageAndApiSecurityTest extends TestCase
         ]);
 
         $payment = SubscriptionPayment::forceCreate([
-            'payment_number' => 'PAY-SIG-001',
+            'payment_number' => 'PAY-AUTH-001',
             'team_id' => $this->tenantA->id,
             'plan_id' => $plan->id,
             'amount_bdt' => 3000.00,
@@ -367,22 +358,24 @@ class StorageAndApiSecurityTest extends TestCase
             'status' => 'pending',
         ]);
 
-        // 1. Missing signature in production mode -> 403
-        $responseNoSig = $this->postJson(route('sslcommerz.ipn'), [
-            'tran_id' => 'PAY-SIG-001',
-            'amount' => 3000.00,
-            'currency' => 'BDT',
-            'status' => 'VALID',
+        // Mock official SSLCommerz Order Validation API responding with VALID
+        Http::fake([
+            '*/validator/api/validationserverAPI.php*' => Http::response([
+                'status' => 'VALIDATED',
+                'tran_id' => 'PAY-AUTH-001',
+                'val_id' => 'VAL-AUTH-999',
+                'amount' => '3000.00',
+                'currency' => 'BDT',
+            ], 200),
         ]);
-        $responseNoSig->assertStatus(403);
 
-        // 2. Valid calculated signature in production mode -> 200
-        $verifyKey = 'amount,currency,status,tran_id';
-        $hashString = 'amount=3000&currency=BDT&status=VALID&tran_id=PAY-SIG-001&store_passwd=' . md5('secret_store_pass');
+        $verifyKey = 'amount,currency,status,tran_id,val_id';
+        $hashString = 'amount=3000&currency=BDT&status=VALID&tran_id=PAY-AUTH-001&val_id=VAL-AUTH-999&store_passwd=' . md5('secret_store_pass');
         $validSign = md5($hashString);
 
-        $responseWithSig = $this->postJson(route('sslcommerz.ipn'), [
-            'tran_id' => 'PAY-SIG-001',
+        $response = $this->postJson(route('sslcommerz.ipn'), [
+            'tran_id' => 'PAY-AUTH-001',
+            'val_id' => 'VAL-AUTH-999',
             'amount' => 3000.00,
             'currency' => 'BDT',
             'status' => 'VALID',
@@ -390,10 +383,319 @@ class StorageAndApiSecurityTest extends TestCase
             'verify_sign' => $validSign,
         ]);
 
-        $responseWithSig->assertOk();
-        $responseWithSig->assertJsonFragment(['status' => 'success']);
+        $response->assertOk();
+        $response->assertJsonFragment(['status' => 'success']);
 
         $payment->refresh();
         $this->assertEquals('approved', $payment->status);
+        $this->assertEquals('VAL-AUTH-999', $payment->trx_id);
+    }
+
+    /**
+     * TEST 12: Remote validation returning non-VALID status rejects payment (SEC-G3-REV-01).
+     */
+    public function test_invalid_server_validation_response_rejects_payment(): void
+    {
+        $plan = Plan::forceCreate([
+            'name' => 'Pro Plan',
+            'slug' => 'pro-inv',
+            'price_bdt' => 2000,
+            'annual_price_bdt' => 20000,
+            'max_products' => 1000,
+            'max_warehouses' => 5,
+            'max_users' => 10,
+            'is_active' => true,
+        ]);
+
+        $payment = SubscriptionPayment::forceCreate([
+            'payment_number' => 'PAY-INV-001',
+            'team_id' => $this->tenantA->id,
+            'plan_id' => $plan->id,
+            'amount_bdt' => 2000.00,
+            'payment_method' => 'sslcommerz',
+            'billing_cycle' => 'monthly',
+            'status' => 'pending',
+        ]);
+
+        // Mock Order Validation API returning INVALID_TRANSACTION
+        Http::fake([
+            '*/validator/api/validationserverAPI.php*' => Http::response([
+                'status' => 'INVALID_TRANSACTION',
+                'tran_id' => 'PAY-INV-001',
+                'val_id' => 'VAL-INV-001',
+                'amount' => '2000.00',
+                'currency' => 'BDT',
+            ], 200),
+        ]);
+
+        $response = $this->postJson(route('sslcommerz.ipn'), [
+            'tran_id' => 'PAY-INV-001',
+            'val_id' => 'VAL-INV-001',
+            'amount' => 2000.00,
+            'currency' => 'BDT',
+            'status' => 'VALID',
+        ]);
+
+        $response->assertStatus(422);
+
+        $payment->refresh();
+        $this->assertEquals('rejected', $payment->status);
+    }
+
+    /**
+     * TEST 13: Gateway timeout or connection failure fails closed (SEC-G3-REV-01).
+     */
+    public function test_provider_service_timeout_or_failure_rejects_payment(): void
+    {
+        $plan = Plan::forceCreate([
+            'name' => 'Pro Plan',
+            'slug' => 'pro-timeout',
+            'price_bdt' => 2000,
+            'annual_price_bdt' => 20000,
+            'max_products' => 1000,
+            'max_warehouses' => 5,
+            'max_users' => 10,
+            'is_active' => true,
+        ]);
+
+        $payment = SubscriptionPayment::forceCreate([
+            'payment_number' => 'PAY-TIMEOUT-001',
+            'team_id' => $this->tenantA->id,
+            'plan_id' => $plan->id,
+            'amount_bdt' => 2000.00,
+            'payment_method' => 'sslcommerz',
+            'billing_cycle' => 'monthly',
+            'status' => 'pending',
+        ]);
+
+        // Mock network timeout/connection exception
+        Http::fake([
+            '*/validator/api/validationserverAPI.php*' => function () {
+                throw new \Illuminate\Http\Client\ConnectionException('Connection timed out after 10000ms');
+            },
+        ]);
+
+        $response = $this->postJson(route('sslcommerz.ipn'), [
+            'tran_id' => 'PAY-TIMEOUT-001',
+            'val_id' => 'VAL-TIMEOUT-001',
+            'amount' => 2000.00,
+            'currency' => 'BDT',
+            'status' => 'VALID',
+        ]);
+
+        $response->assertStatus(422);
+
+        $payment->refresh();
+        $this->assertEquals('rejected', $payment->status);
+    }
+
+    /**
+     * TEST 14: FAILED and CANCELLED statuses in sandbox are rejected (SEC-G3-REV-02).
+     */
+    public function test_failed_and_cancelled_status_in_sandbox_cannot_approve_payment(): void
+    {
+        Config::set('services.sslcommerz.sandbox', true);
+
+        $plan = Plan::forceCreate([
+            'name' => 'Pro Plan',
+            'slug' => 'pro-sandbox-fail',
+            'price_bdt' => 1500,
+            'annual_price_bdt' => 15000,
+            'max_products' => 1000,
+            'max_warehouses' => 5,
+            'max_users' => 10,
+            'is_active' => true,
+        ]);
+
+        $payment = SubscriptionPayment::forceCreate([
+            'payment_number' => 'PAY-FAIL-SANDBOX-001',
+            'team_id' => $this->tenantA->id,
+            'plan_id' => $plan->id,
+            'amount_bdt' => 1500.00,
+            'payment_method' => 'sslcommerz',
+            'billing_cycle' => 'monthly',
+            'status' => 'pending',
+        ]);
+
+        // Attempt IPN with status=FAILED
+        $responseFailed = $this->postJson(route('sslcommerz.ipn'), [
+            'tran_id' => 'PAY-FAIL-SANDBOX-001',
+            'val_id' => 'VAL-FAIL',
+            'amount' => 1500.00,
+            'currency' => 'BDT',
+            'status' => 'FAILED',
+        ]);
+
+        $responseFailed->assertStatus(422);
+        $payment->refresh();
+        $this->assertEquals('rejected', $payment->status);
+
+        // Reset payment to pending and attempt status=CANCELLED
+        $payment->update(['status' => 'pending']);
+
+        $responseCancelled = $this->postJson(route('sslcommerz.ipn'), [
+            'tran_id' => 'PAY-FAIL-SANDBOX-001',
+            'val_id' => 'VAL-CANCEL',
+            'amount' => 1500.00,
+            'currency' => 'BDT',
+            'status' => 'CANCELLED',
+        ]);
+
+        $responseCancelled->assertStatus(422);
+        $payment->refresh();
+        $this->assertEquals('rejected', $payment->status);
+    }
+
+    /**
+     * TEST 15: Duplicate val_id across existing approved payments is rejected (SEC-G3-REV-01).
+     */
+    public function test_duplicate_val_id_across_approved_payments_is_rejected(): void
+    {
+        $plan = Plan::forceCreate([
+            'name' => 'Pro Plan',
+            'slug' => 'pro-dup',
+            'price_bdt' => 2500,
+            'annual_price_bdt' => 25000,
+            'max_products' => 1000,
+            'max_warehouses' => 5,
+            'max_users' => 10,
+            'is_active' => true,
+        ]);
+
+        // Existing approved payment using val_id VAL-ALREADY-USED
+        SubscriptionPayment::forceCreate([
+            'payment_number' => 'PAY-PREV-001',
+            'team_id' => $this->tenantB->id,
+            'plan_id' => $plan->id,
+            'amount_bdt' => 2500.00,
+            'payment_method' => 'sslcommerz',
+            'billing_cycle' => 'monthly',
+            'trx_id' => 'VAL-ALREADY-USED',
+            'status' => 'approved',
+        ]);
+
+        // New pending payment attempting to reuse the same val_id
+        $paymentNew = SubscriptionPayment::forceCreate([
+            'payment_number' => 'PAY-NEW-001',
+            'team_id' => $this->tenantA->id,
+            'plan_id' => $plan->id,
+            'amount_bdt' => 2500.00,
+            'payment_method' => 'sslcommerz',
+            'billing_cycle' => 'monthly',
+            'status' => 'pending',
+        ]);
+
+        $response = $this->postJson(route('sslcommerz.ipn'), [
+            'tran_id' => 'PAY-NEW-001',
+            'val_id' => 'VAL-ALREADY-USED',
+            'amount' => 2500.00,
+            'currency' => 'BDT',
+            'status' => 'VALID',
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonFragment(['message' => 'Transaction validation ID has already been utilized by another approved payment.']);
+
+        $paymentNew->refresh();
+        $this->assertEquals('rejected', $paymentNew->status);
+    }
+
+    /**
+     * TEST 16: API File Download requires documents:read token ability (SEC-G3-REV-03).
+     */
+    public function test_missing_documents_read_ability_rejects_api_file_download(): void
+    {
+        $file = UploadedFile::fake()->create('report.pdf', 100, 'application/pdf');
+        $storedPath = $this->storageService->storeTenantFile($this->tenantA->id, $file, 'documents');
+
+        // Token issued with only 'products:read', lacking 'documents:read'
+        $tokenNoDoc = $this->ownerA->createTenantToken($this->tenantA->id, 'Catalog Only Token', ['products:read'])->plainTextToken;
+
+        $response = $this->withHeader('Authorization', 'Bearer ' . $tokenNoDoc)
+            ->getJson(route('api.v1.files.download', ['path' => $storedPath]));
+
+        $response->assertStatus(403);
+        $response->assertJsonFragment(['error' => 'TokenAbilityDenied']);
+    }
+
+    /**
+     * TEST 17: Authorized API File Download with documents:read ability succeeds (SEC-G3-REV-03).
+     */
+    public function test_authorized_api_file_download_with_documents_read_ability(): void
+    {
+        $file = UploadedFile::fake()->create('financial_summary.pdf', 100, 'application/pdf');
+        $storedPath = $this->storageService->storeTenantFile($this->tenantA->id, $file, 'documents');
+
+        // Token issued with 'documents:read'
+        $tokenWithDoc = $this->ownerA->createTenantToken($this->tenantA->id, 'Document Token', ['documents:read'])->plainTextToken;
+
+        $response = $this->withHeader('Authorization', 'Bearer ' . $tokenWithDoc)
+            ->get(route('api.v1.files.download', ['path' => $storedPath]));
+
+        $response->assertOk();
+        $response->assertHeader('X-Content-Type-Options', 'nosniff');
+    }
+
+    /**
+     * TEST 18: Tenant letterheads are stored in private disk and accessible to PDFs (SEC-G3-REV-04).
+     */
+    public function test_tenant_letterheads_stored_in_private_disk(): void
+    {
+        $this->actingAs($this->ownerA);
+
+        $invoiceBg = UploadedFile::fake()->image('custom_letterhead.png', 800, 1100);
+
+        $response = $this->post(route('settings.company.update.post'), [
+            'name' => 'Tenant Alpha Hardened',
+            'currency_symbol' => '৳',
+            'currency_code' => 'BDT',
+            'invoice_prefix' => 'INV-',
+            'po_prefix' => 'PO-',
+            'invoice_bg' => $invoiceBg,
+        ]);
+
+        $response->assertSessionHas('success');
+
+        $this->tenantA->refresh();
+        $storedPath = $this->tenantA->invoice_bg_path;
+
+        $this->assertNotNull($storedPath);
+        $this->assertStringStartsWith("tenants/{$this->tenantA->id}/letterheads/", $storedPath);
+
+        // Verified on private disk, NOT public disk
+        Storage::disk('private')->assertExists($storedPath);
+        Storage::disk('public')->assertMissing($storedPath);
+
+        // Absolute path resolution for PDF engine
+        $absolutePath = $this->tenantA->getInvoiceBgAbsolutePath();
+        $this->assertNotNull($absolutePath);
+        $this->assertStringContainsString('private', $absolutePath);
+    }
+
+    /**
+     * TEST 19: MIME type mismatch against extension is rejected on upload (SEC-G3-REV-05).
+     */
+    public function test_mime_type_mismatch_with_extension_is_rejected_on_upload(): void
+    {
+        // PHP script masked as .png
+        $spoofedFile = UploadedFile::fake()->create('stealth.png', 50, 'application/x-php');
+
+        $this->expectException(BadRequestHttpException::class);
+        $this->expectExceptionMessage("MIME type 'application/x-php' does not match the expected MIME types for extension 'png'.");
+
+        $this->storageService->storeTenantFile($this->tenantA->id, $spoofedFile, 'documents');
+    }
+
+    /**
+     * TEST 20: Unsupported file extension is rejected on upload (SEC-G3-REV-05).
+     */
+    public function test_unsupported_file_extension_is_rejected_on_upload(): void
+    {
+        $executableFile = UploadedFile::fake()->create('tool.exe', 100, 'application/x-msdownload');
+
+        $this->expectException(BadRequestHttpException::class);
+        $this->expectExceptionMessage("Upload of 'exe' file types is not permitted.");
+
+        $this->storageService->storeTenantFile($this->tenantA->id, $executableFile, 'documents');
     }
 }

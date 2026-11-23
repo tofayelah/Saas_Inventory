@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\SubscriptionPayment;
 use App\Models\Team;
 use App\Services\SubscriptionService;
+use App\Services\SslCommerzValidationService;
 use App\Services\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -16,8 +17,12 @@ class SslCommerzPaymentController extends Controller
     /**
      * Handle successful payment return from SSLCommerz.
      */
-    public function success(Request $request, SubscriptionService $service, TenantContext $tenantContext): RedirectResponse
-    {
+    public function success(
+        Request $request,
+        SubscriptionService $service,
+        TenantContext $tenantContext,
+        SslCommerzValidationService $validator
+    ): RedirectResponse {
         $tranId = (string) $request->input('tran_id', '');
         $valId = (string) $request->input('val_id', '');
         $amount = (float) $request->input('amount', 0);
@@ -38,7 +43,7 @@ class SslCommerzPaymentController extends Controller
             return redirect()->route('subscription.index')->with('success', 'Payment has already been processed and verified.');
         }
 
-        // 1. Strict Currency & Amount Verification
+        // 1. Strict Currency & Amount Verification on Incoming Payload
         if ($currency !== 'BDT') {
             Log::warning("SSLCommerz currency mismatch for {$tranId}. Expected BDT, received: {$currency}");
             return redirect()->route('subscription.index')->withErrors(['error' => 'Unsupported currency in payment response.']);
@@ -49,16 +54,14 @@ class SslCommerzPaymentController extends Controller
             return redirect()->route('subscription.index')->withErrors(['error' => 'Payment amount mismatch. Please contact support.']);
         }
 
-        // 2. Validate Gateway Signature / Verification
+        // 2. Validate Gateway Parameter Signature
         if (!$this->verifyGatewaySignature($request)) {
             Log::warning("SSLCommerz signature verification failed for {$tranId}.");
             return redirect()->route('subscription.index')->withErrors(['error' => 'Payment signature verification failed.']);
         }
 
-        // 3. Status Verification
-        $isValidStatus = in_array($status, ['VALID', 'VALIDATED']) || config('services.sslcommerz.sandbox', true);
-
-        if (!$isValidStatus) {
+        // 3. Strict Status Verification (No Sandbox Bypass - SEC-G3-REV-02)
+        if (!in_array($status, ['VALID', 'VALIDATED'], true)) {
             $payment->update([
                 'status' => 'rejected',
                 'rejection_reason' => "Gateway status: {$status}",
@@ -68,12 +71,28 @@ class SslCommerzPaymentController extends Controller
             return redirect()->route('subscription.index')->withErrors(['error' => "Payment verification failed with status: {$status}"]);
         }
 
+        if (!$valId) {
+            return redirect()->route('subscription.index')->withErrors(['error' => 'Missing transaction validation identifier from gateway.']);
+        }
+
+        // 4. Authoritative Server-to-Server Order Validation API Call (SEC-G3-REV-01)
+        $validation = $validator->validateTransaction($payment, $valId);
+        if (!$validation['is_valid']) {
+            $payment->update([
+                'status' => 'rejected',
+                'rejection_reason' => $validation['reason'],
+                'gateway_payload' => $validation['payload'] ?? $request->all(),
+            ]);
+
+            return redirect()->route('subscription.index')->withErrors(['error' => "Payment validation failed: {$validation['reason']}"]);
+        }
+
         $payment->update([
-            'trx_id' => $valId ?: $tranId,
-            'gateway_payload' => $request->all(),
+            'trx_id' => $valId,
+            'gateway_payload' => $validation['payload'] ?? $request->all(),
         ]);
 
-        // 4. Execute Payment Approval within isolated Tenant Context
+        // 5. Execute Payment Approval within isolated Tenant Context
         $team = Team::withoutGlobalScopes()->find($payment->team_id);
         if ($team) {
             $tenantContext->runWithTenant($team, function () use ($service, $payment) {
@@ -127,10 +146,14 @@ class SslCommerzPaymentController extends Controller
     }
 
     /**
-     * Handle background IPN webhook from SSLCommerz with strict signature and amount validation.
+     * Handle background IPN webhook from SSLCommerz with strict signature, amount, and server-to-server validation.
      */
-    public function ipn(Request $request, SubscriptionService $service, TenantContext $tenantContext): JsonResponse
-    {
+    public function ipn(
+        Request $request,
+        SubscriptionService $service,
+        TenantContext $tenantContext,
+        SslCommerzValidationService $validator
+    ): JsonResponse {
         $tranId = (string) $request->input('tran_id', '');
         $valId = (string) $request->input('val_id', '');
         $amount = (float) $request->input('amount', 0);
@@ -162,39 +185,56 @@ class SslCommerzPaymentController extends Controller
             return response()->json(['status' => 'error', 'message' => 'Payment amount mismatch'], 400);
         }
 
-        // 2. Validate Gateway Signature / Verification
+        // 2. Validate Gateway Parameter Signature
         if (!$this->verifyGatewaySignature($request)) {
             Log::warning("SSLCommerz IPN signature verification failed for {$tranId}.");
             return response()->json(['status' => 'error', 'message' => 'Signature verification failed'], 403);
         }
 
-        // 3. Status Verification
-        $isValidStatus = in_array($status, ['VALID', 'VALIDATED']) || config('services.sslcommerz.sandbox', true);
-
-        if ($isValidStatus) {
+        // 3. Status Verification (No Sandbox Bypass - SEC-G3-REV-02)
+        if (!in_array($status, ['VALID', 'VALIDATED'], true)) {
             $payment->update([
-                'trx_id' => $valId ?: $tranId,
+                'status' => 'rejected',
+                'rejection_reason' => "IPN status: {$status}",
                 'gateway_payload' => $request->all(),
             ]);
 
-            // Execute within tenant context
-            $team = Team::withoutGlobalScopes()->find($payment->team_id);
-            if ($team) {
-                $tenantContext->runWithTenant($team, function () use ($service, $payment) {
-                    $service->approvePayment($payment, null);
-                });
-            }
+            return response()->json(['status' => 'rejected', 'message' => "Transaction status [{$status}] is not valid"], 422);
+        }
 
-            return response()->json(['status' => 'success', 'message' => 'Payment approved']);
+        if (!$valId) {
+            return response()->json(['status' => 'error', 'message' => 'Missing val_id'], 400);
+        }
+
+        // 4. Authoritative Server-to-Server Order Validation API Call (SEC-G3-REV-01)
+        $validation = $validator->validateTransaction($payment, $valId);
+        if (!$validation['is_valid']) {
+            $payment->update([
+                'status' => 'rejected',
+                'rejection_reason' => $validation['reason'],
+                'gateway_payload' => $validation['payload'] ?? $request->all(),
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => $validation['reason'],
+            ], 422);
         }
 
         $payment->update([
-            'status' => 'rejected',
-            'rejection_reason' => "IPN status: {$status}",
-            'gateway_payload' => $request->all(),
+            'trx_id' => $valId,
+            'gateway_payload' => $validation['payload'] ?? $request->all(),
         ]);
 
-        return response()->json(['status' => 'rejected']);
+        // 5. Execute within tenant context
+        $team = Team::withoutGlobalScopes()->find($payment->team_id);
+        if ($team) {
+            $tenantContext->runWithTenant($team, function () use ($service, $payment) {
+                $service->approvePayment($payment, null);
+            });
+        }
+
+        return response()->json(['status' => 'success', 'message' => 'Payment approved']);
     }
 
     /**
@@ -228,7 +268,7 @@ class SslCommerzPaymentController extends Controller
             return hash_equals($computedSign, $verifySign);
         }
 
-        // In sandbox without signature provided, pass through
+        // In sandbox without signature provided, pass through to authoritative validation
         return true;
     }
 }

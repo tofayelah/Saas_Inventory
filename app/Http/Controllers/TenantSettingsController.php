@@ -95,10 +95,13 @@ class TenantSettingsController extends Controller
             'report_margin_bottom' => 'nullable|integer|min:0|max:150',
         ]);
 
-        // Handle Invoice Background Upload
+        // Handle Invoice Background Upload (Private Storage - SEC-G3-REV-04)
         if ($request->hasFile('invoice_bg')) {
             if ($team->invoice_bg_path) {
                 try {
+                    if (Storage::disk('private')->exists($team->invoice_bg_path)) {
+                        Storage::disk('private')->delete($team->invoice_bg_path);
+                    }
                     if (Storage::disk('public')->exists($team->invoice_bg_path)) {
                         Storage::disk('public')->delete($team->invoice_bg_path);
                     }
@@ -106,13 +109,16 @@ class TenantSettingsController extends Controller
                     Log::warning("Failed to delete previous invoice background '{$team->invoice_bg_path}': " . $e->getMessage());
                 }
             }
-            $validated['invoice_bg_path'] = $request->file('invoice_bg')->store("tenants/{$team->id}/letterheads", 'public');
+            $validated['invoice_bg_path'] = $request->file('invoice_bg')->store("tenants/{$team->id}/letterheads", 'private');
         }
 
-        // Handle Report Background Upload
+        // Handle Report Background Upload (Private Storage - SEC-G3-REV-04)
         if ($request->hasFile('report_bg')) {
             if ($team->report_bg_path) {
                 try {
+                    if (Storage::disk('private')->exists($team->report_bg_path)) {
+                        Storage::disk('private')->delete($team->report_bg_path);
+                    }
                     if (Storage::disk('public')->exists($team->report_bg_path)) {
                         Storage::disk('public')->delete($team->report_bg_path);
                     }
@@ -120,7 +126,7 @@ class TenantSettingsController extends Controller
                     Log::warning("Failed to delete previous report background '{$team->report_bg_path}': " . $e->getMessage());
                 }
             }
-            $validated['report_bg_path'] = $request->file('report_bg')->store("tenants/{$team->id}/letterheads", 'public');
+            $validated['report_bg_path'] = $request->file('report_bg')->store("tenants/{$team->id}/letterheads", 'private');
         }
 
         $team->update($validated);
@@ -146,6 +152,9 @@ class TenantSettingsController extends Controller
 
         if ($team->invoice_bg_path) {
             try {
+                if (Storage::disk('private')->exists($team->invoice_bg_path)) {
+                    Storage::disk('private')->delete($team->invoice_bg_path);
+                }
                 if (Storage::disk('public')->exists($team->invoice_bg_path)) {
                     Storage::disk('public')->delete($team->invoice_bg_path);
                 }
@@ -177,6 +186,9 @@ class TenantSettingsController extends Controller
 
         if ($team->report_bg_path) {
             try {
+                if (Storage::disk('private')->exists($team->report_bg_path)) {
+                    Storage::disk('private')->delete($team->report_bg_path);
+                }
                 if (Storage::disk('public')->exists($team->report_bg_path)) {
                     Storage::disk('public')->delete($team->report_bg_path);
                 }

@@ -13,26 +13,44 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 class SecureStorageService
 {
     /**
-     * Dangerous executable or scripting extensions strictly forbidden from upload.
+     * Strict allowlist of permitted business document extensions and their corresponding MIME types (SEC-G3-REV-05).
      */
-    protected const FORBIDDEN_EXTENSIONS = [
-        'php', 'php3', 'php4', 'php5', 'phtml', 'phar', 'inc',
-        'exe', 'bat', 'cmd', 'sh', 'bash', 'bin', 'dll', 'so',
-        'pl', 'cgi', 'py', 'js', 'vbs', 'jar', 'war', 'msi',
+    protected const ALLOWED_EXTENSIONS = [
+        'pdf'  => ['application/pdf'],
+        'doc'  => ['application/msword'],
+        'docx' => ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+        'xls'  => ['application/vnd.ms-excel'],
+        'xlsx' => ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+        'csv'  => ['text/csv', 'text/plain', 'application/vnd.ms-excel', 'text/x-csv'],
+        'txt'  => ['text/plain'],
+        'jpg'  => ['image/jpeg'],
+        'jpeg' => ['image/jpeg'],
+        'png'  => ['image/png'],
+        'webp' => ['image/webp'],
+        'zip'  => ['application/zip', 'application/x-zip-compressed'],
     ];
 
     /**
-     * Store a file securely in the tenant's private directory.
+     * Store a file securely in the tenant's private directory with strict extension and MIME verification.
      */
     public function storeTenantFile(int $teamId, UploadedFile $file, string $directory = 'documents'): string
     {
         $extension = strtolower($file->getClientOriginalExtension());
 
-        if (in_array($extension, self::FORBIDDEN_EXTENSIONS, true)) {
-            throw new BadRequestHttpException("Upload of '{$extension}' file types is strictly prohibited.");
+        // 1. Strict Extension Allowlist
+        if (!array_key_exists($extension, self::ALLOWED_EXTENSIONS)) {
+            throw new BadRequestHttpException("Upload of '{$extension}' file types is not permitted. Allowed types: " . implode(', ', array_keys(self::ALLOWED_EXTENSIONS)));
         }
 
-        // Sanitize directory to prevent traversal
+        // 2. MIME Type Verification Against Allowlist
+        $mimeType = $file->getMimeType();
+        $allowedMimes = self::ALLOWED_EXTENSIONS[$extension];
+
+        if (!in_array($mimeType, $allowedMimes, true)) {
+            throw new BadRequestHttpException("MIME type '{$mimeType}' does not match the expected MIME types for extension '{$extension}'.");
+        }
+
+        // 3. Sanitize directory to prevent traversal
         $safeDir = preg_replace('/[^a-zA-Z0-9_\-]/', '', $directory);
         if (empty($safeDir)) {
             $safeDir = 'documents';

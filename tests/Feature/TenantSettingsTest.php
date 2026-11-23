@@ -176,6 +176,7 @@ class TenantSettingsTest extends TestCase
 
     public function test_tenant_can_upload_invoice_and_report_backgrounds_and_set_margins(): void
     {
+        \Illuminate\Support\Facades\Storage::fake('private');
         \Illuminate\Support\Facades\Storage::fake('public');
 
         $invoiceFile = \Illuminate\Http\UploadedFile::fake()->image('invoice_letterhead.png', 1000, 1400);
@@ -206,8 +207,8 @@ class TenantSettingsTest extends TestCase
         $this->assertEquals(45, $this->team->report_margin_top);
         $this->assertEquals(28, $this->team->report_margin_bottom);
 
-        \Illuminate\Support\Facades\Storage::disk('public')->assertExists($this->team->invoice_bg_path);
-        \Illuminate\Support\Facades\Storage::disk('public')->assertExists($this->team->report_bg_path);
+        \Illuminate\Support\Facades\Storage::disk('private')->assertExists($this->team->invoice_bg_path);
+        \Illuminate\Support\Facades\Storage::disk('private')->assertExists($this->team->report_bg_path);
     }
 
     public function test_tenant_can_preview_sample_invoice_pdf(): void

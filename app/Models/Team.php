@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Database\Factories\TeamFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Jetstream\Events\TeamCreated;
 use Laravel\Jetstream\Events\TeamDeleted;
 use Laravel\Jetstream\Events\TeamUpdated;
@@ -87,28 +88,48 @@ class Team extends JetstreamTeam
      }
 
     /**
-     * Get absolute filesystem path to invoice background image.
+     * Get absolute filesystem path to invoice background image (Private Storage - SEC-G3-REV-04).
      */
     public function getInvoiceBgAbsolutePath(): ?string
     {
         if ($this->invoice_bg_path) {
-            $path = storage_path('app/public/' . $this->invoice_bg_path);
-            if (file_exists($path)) {
-                return $path;
+            if (Storage::disk('private')->exists($this->invoice_bg_path)) {
+                return Storage::disk('private')->path($this->invoice_bg_path);
+            }
+            if (Storage::disk('public')->exists($this->invoice_bg_path)) {
+                return Storage::disk('public')->path($this->invoice_bg_path);
+            }
+            $privatePath = storage_path('app/private/' . $this->invoice_bg_path);
+            if (file_exists($privatePath)) {
+                return $privatePath;
+            }
+            $publicPath = storage_path('app/public/' . $this->invoice_bg_path);
+            if (file_exists($publicPath)) {
+                return $publicPath;
             }
         }
         return null;
     }
 
     /**
-     * Get absolute filesystem path to report background image.
+     * Get absolute filesystem path to report background image (Private Storage - SEC-G3-REV-04).
      */
     public function getReportBgAbsolutePath(): ?string
     {
         if ($this->report_bg_path) {
-            $path = storage_path('app/public/' . $this->report_bg_path);
-            if (file_exists($path)) {
-                return $path;
+            if (Storage::disk('private')->exists($this->report_bg_path)) {
+                return Storage::disk('private')->path($this->report_bg_path);
+            }
+            if (Storage::disk('public')->exists($this->report_bg_path)) {
+                return Storage::disk('public')->path($this->report_bg_path);
+            }
+            $privatePath = storage_path('app/private/' . $this->report_bg_path);
+            if (file_exists($privatePath)) {
+                return $privatePath;
+            }
+            $publicPath = storage_path('app/public/' . $this->report_bg_path);
+            if (file_exists($publicPath)) {
+                return $publicPath;
             }
         }
         return null;

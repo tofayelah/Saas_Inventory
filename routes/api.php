@@ -33,7 +33,8 @@ Route::prefix('v1')->middleware(['auth:sanctum', 'tenant.api'])->group(function 
         ->middleware('token.ability:orders:read')
         ->name('api.v1.orders.index');
 
-    // 5. Secure File Download API
+    // 5. Secure File Download API (Requires documents:read ability + tenant permission)
     Route::get('/files/download', [TenantApiController::class, 'downloadFile'])
+        ->middleware('token.ability:documents:read')
         ->name('api.v1.files.download');
 });

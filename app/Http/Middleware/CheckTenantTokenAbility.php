@@ -18,6 +18,8 @@ class CheckTenantTokenAbility
         'customers:write' => ['manage-customers'],
         'orders:read' => ['manage-orders', 'view-reports'],
         'orders:write' => ['manage-orders'],
+        'documents:read' => ['view-reports', 'manage-accounting', 'manage-orders', 'manage-products'],
+        'documents:write' => ['manage-products', 'manage-accounting', 'manage-orders'],
     ];
 
     /**

@@ -389,6 +389,16 @@ class BangladeshiSubscriptionAndBillingTest extends TestCase
         $initiated = $this->subscriptionService->initiateSslCommerzPayment($this->team, $plan, 'monthly');
         $payment = $initiated['payment'];
 
+        \Illuminate\Support\Facades\Http::fake([
+            '*/validator/api/validationserverAPI.php*' => \Illuminate\Support\Facades\Http::response([
+                'status' => 'VALID',
+                'tran_id' => $payment->payment_number,
+                'val_id' => 'VAL-SSL-2026-TEST',
+                'amount' => (string) $payment->amount_bdt,
+                'currency' => 'BDT',
+            ], 200),
+        ]);
+
         $payload = [
             'tran_id' => $payment->payment_number,
             'val_id' => 'VAL-SSL-2026-TEST',
@@ -435,6 +445,16 @@ class BangladeshiSubscriptionAndBillingTest extends TestCase
 
         $initiated = $this->subscriptionService->initiateSslCommerzPayment($this->team, $plan, 'yearly');
         $payment = $initiated['payment'];
+
+        \Illuminate\Support\Facades\Http::fake([
+            '*/validator/api/validationserverAPI.php*' => \Illuminate\Support\Facades\Http::response([
+                'status' => 'VALIDATED',
+                'tran_id' => $payment->payment_number,
+                'val_id' => 'IPN-VAL-9988',
+                'amount' => (string) $payment->amount_bdt,
+                'currency' => 'BDT',
+            ], 200),
+        ]);
 
         $response = $this->postJson(route('sslcommerz.ipn'), [
             'tran_id' => $payment->payment_number,
