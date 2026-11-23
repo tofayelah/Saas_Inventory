@@ -283,6 +283,10 @@ Route::middleware([
         Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');
         Route::get('/reports/pdf', [ReportController::class, 'downloadPdf'])->name('reports.pdf');
         Route::get('/reports/excel', [ReportController::class, 'downloadExcel'])->name('reports.excel');
+
+        // Secure File Storage & Authorized Downloads (Gate 3)
+        Route::get('/secure-files/download', [\App\Http\Controllers\SecureFileController::class, 'download'])->name('secure-files.download');
+        Route::post('/secure-files/upload', [\App\Http\Controllers\SecureFileController::class, 'upload'])->name('secure-files.upload');
     });
 
     // 8. Dynamic Bank Accounts, Daily Expenses, & Double-Entry Accounting Engine (manage-accounting)
@@ -417,12 +421,37 @@ Route::post('/sslcommerz/fail', [SslCommerzPaymentController::class, 'fail'])->n
 Route::post('/sslcommerz/cancel', [SslCommerzPaymentController::class, 'cancel'])->name('sslcommerz.cancel');
 Route::post('/sslcommerz/ipn', [SslCommerzPaymentController::class, 'ipn'])->name('sslcommerz.ipn');
 
-// Storage File Fallback Route (ensures public/storage files serve even when symlink is missing or unsupported)
+// Storage File Fallback Route (Hardened against directory traversal and unauthenticated tenant data leakage)
 Route::get('/storage/{path}', function ($path) {
-    $fullPath = storage_path('app/public/' . $path);
-    if (!file_exists($fullPath)) {
+    // 1. Strict traversal and null byte prevention
+    if (str_contains($path, '..') || str_contains($path, "\0") || str_contains($path, '\\')) {
         abort(404);
     }
-    return response()->file($fullPath);
+
+    // 2. Prevent unauthenticated or cross-tenant access to tenant folders
+    if (str_starts_with($path, 'tenants/')) {
+        $user = auth()->user();
+        if (!$user) {
+            abort(403, 'Unauthorized access to tenant storage.');
+        }
+
+        preg_match('#^tenants/(\d+)/#', $path, $matches);
+        $requestedTeamId = isset($matches[1]) ? (int) $matches[1] : 0;
+        if (!$requestedTeamId || (!$user->isSuperAdmin() && (int) $user->current_team_id !== $requestedTeamId)) {
+            abort(403, 'Cross-tenant storage access is strictly prohibited.');
+        }
+    }
+
+    $basePath = realpath(storage_path('app/public'));
+    $fullPath = realpath(storage_path('app/public/' . $path));
+
+    // 3. Ensure path is strictly within the public storage directory and is an actual file
+    if (!$fullPath || !$basePath || !str_starts_with($fullPath, $basePath) || !is_file($fullPath)) {
+        abort(404);
+    }
+
+    return response()->file($fullPath, [
+        'X-Content-Type-Options' => 'nosniff',
+    ]);
 })->where('path', '.*')->name('storage.fallback');
 

@@ -150,6 +150,14 @@ class TenantContext
     }
 
     /**
+     * Alias for executeAsTenant.
+     */
+    public function runWithTenant(Team|int $tenant, callable $callback): mixed
+    {
+        return $this->executeAsTenant($tenant, $callback);
+    }
+
+    /**
      * Execute a callback in an authorized privileged context (for platform super admin maintenance only).
      */
     public function executePrivileged(callable $callback): mixed

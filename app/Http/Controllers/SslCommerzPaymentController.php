@@ -3,7 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\SubscriptionPayment;
+use App\Models\Team;
 use App\Services\SubscriptionService;
+use App\Services\TenantContext;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -12,19 +16,19 @@ class SslCommerzPaymentController extends Controller
     /**
      * Handle successful payment return from SSLCommerz.
      */
-    public function success(Request $request, SubscriptionService $service)
+    public function success(Request $request, SubscriptionService $service, TenantContext $tenantContext): RedirectResponse
     {
-        $tranId = $request->input('tran_id');
-        $valId = $request->input('val_id');
+        $tranId = (string) $request->input('tran_id', '');
+        $valId = (string) $request->input('val_id', '');
         $amount = (float) $request->input('amount', 0);
-        $currency = $request->input('currency', 'BDT');
+        $currency = strtoupper((string) $request->input('currency', 'BDT'));
         $status = strtoupper((string) $request->input('status', ''));
 
         if (!$tranId) {
             return redirect()->route('subscription.index')->withErrors(['error' => 'Invalid gateway response: Transaction ID missing.']);
         }
 
-        $payment = SubscriptionPayment::where('payment_number', $tranId)->first();
+        $payment = SubscriptionPayment::withoutGlobalScopes()->where('payment_number', $tranId)->first();
 
         if (!$payment) {
             return redirect()->route('subscription.index')->withErrors(['error' => 'Subscription payment record not found.']);
@@ -34,13 +38,24 @@ class SslCommerzPaymentController extends Controller
             return redirect()->route('subscription.index')->with('success', 'Payment has already been processed and verified.');
         }
 
-        // Validate currency and amount match expected record
-        if (abs((float) $payment->amount_bdt - $amount) > 0.01 && $amount > 0) {
+        // 1. Strict Currency & Amount Verification
+        if ($currency !== 'BDT') {
+            Log::warning("SSLCommerz currency mismatch for {$tranId}. Expected BDT, received: {$currency}");
+            return redirect()->route('subscription.index')->withErrors(['error' => 'Unsupported currency in payment response.']);
+        }
+
+        if ($amount > 0 && abs((float) $payment->amount_bdt - $amount) > 0.01) {
             Log::warning("SSLCommerz amount mismatch for {$tranId}. Expected: {$payment->amount_bdt}, Received: {$amount}");
             return redirect()->route('subscription.index')->withErrors(['error' => 'Payment amount mismatch. Please contact support.']);
         }
 
-        // Accept VALID / VALIDATED or sandbox testing confirmation
+        // 2. Validate Gateway Signature / Verification
+        if (!$this->verifyGatewaySignature($request)) {
+            Log::warning("SSLCommerz signature verification failed for {$tranId}.");
+            return redirect()->route('subscription.index')->withErrors(['error' => 'Payment signature verification failed.']);
+        }
+
+        // 3. Status Verification
         $isValidStatus = in_array($status, ['VALID', 'VALIDATED']) || config('services.sslcommerz.sandbox', true);
 
         if (!$isValidStatus) {
@@ -58,7 +73,13 @@ class SslCommerzPaymentController extends Controller
             'gateway_payload' => $request->all(),
         ]);
 
-        $service->approvePayment($payment, null);
+        // 4. Execute Payment Approval within isolated Tenant Context
+        $team = Team::withoutGlobalScopes()->find($payment->team_id);
+        if ($team) {
+            $tenantContext->runWithTenant($team, function () use ($service, $payment) {
+                $service->approvePayment($payment, null);
+            });
+        }
 
         return redirect()->route('subscription.index')->with('success', 'Payment processed and verified successfully via SSLCommerz. Subscription upgraded.');
     }
@@ -66,12 +87,12 @@ class SslCommerzPaymentController extends Controller
     /**
      * Handle failed payment return from SSLCommerz.
      */
-    public function fail(Request $request)
+    public function fail(Request $request): RedirectResponse
     {
-        $tranId = $request->input('tran_id');
+        $tranId = (string) $request->input('tran_id', '');
 
         if ($tranId) {
-            SubscriptionPayment::where('payment_number', $tranId)
+            SubscriptionPayment::withoutGlobalScopes()->where('payment_number', $tranId)
                 ->where('status', 'pending')
                 ->update([
                     'status' => 'rejected',
@@ -88,12 +109,12 @@ class SslCommerzPaymentController extends Controller
     /**
      * Handle cancelled payment return from SSLCommerz.
      */
-    public function cancel(Request $request)
+    public function cancel(Request $request): RedirectResponse
     {
-        $tranId = $request->input('tran_id');
+        $tranId = (string) $request->input('tran_id', '');
 
         if ($tranId) {
-            SubscriptionPayment::where('payment_number', $tranId)
+            SubscriptionPayment::withoutGlobalScopes()->where('payment_number', $tranId)
                 ->where('status', 'pending')
                 ->update([
                     'status' => 'rejected',
@@ -106,20 +127,21 @@ class SslCommerzPaymentController extends Controller
     }
 
     /**
-     * Handle background IPN webhook from SSLCommerz.
+     * Handle background IPN webhook from SSLCommerz with strict signature and amount validation.
      */
-    public function ipn(Request $request, SubscriptionService $service)
+    public function ipn(Request $request, SubscriptionService $service, TenantContext $tenantContext): JsonResponse
     {
-        $tranId = $request->input('tran_id');
-        $valId = $request->input('val_id');
+        $tranId = (string) $request->input('tran_id', '');
+        $valId = (string) $request->input('val_id', '');
         $amount = (float) $request->input('amount', 0);
+        $currency = strtoupper((string) $request->input('currency', 'BDT'));
         $status = strtoupper((string) $request->input('status', ''));
 
         if (!$tranId) {
             return response()->json(['status' => 'error', 'message' => 'Missing tran_id'], 400);
         }
 
-        $payment = SubscriptionPayment::where('payment_number', $tranId)->first();
+        $payment = SubscriptionPayment::withoutGlobalScopes()->where('payment_number', $tranId)->first();
 
         if (!$payment) {
             return response()->json(['status' => 'error', 'message' => 'Payment not found'], 404);
@@ -129,6 +151,24 @@ class SslCommerzPaymentController extends Controller
             return response()->json(['status' => 'already_processed']);
         }
 
+        // 1. Strict Currency & Amount Verification in IPN
+        if ($currency !== 'BDT') {
+            Log::warning("SSLCommerz IPN currency mismatch for {$tranId}. Expected BDT, received: {$currency}");
+            return response()->json(['status' => 'error', 'message' => 'Invalid currency'], 400);
+        }
+
+        if ($amount > 0 && abs((float) $payment->amount_bdt - $amount) > 0.01) {
+            Log::warning("SSLCommerz IPN amount mismatch for {$tranId}. Expected: {$payment->amount_bdt}, Received: {$amount}");
+            return response()->json(['status' => 'error', 'message' => 'Payment amount mismatch'], 400);
+        }
+
+        // 2. Validate Gateway Signature / Verification
+        if (!$this->verifyGatewaySignature($request)) {
+            Log::warning("SSLCommerz IPN signature verification failed for {$tranId}.");
+            return response()->json(['status' => 'error', 'message' => 'Signature verification failed'], 403);
+        }
+
+        // 3. Status Verification
         $isValidStatus = in_array($status, ['VALID', 'VALIDATED']) || config('services.sslcommerz.sandbox', true);
 
         if ($isValidStatus) {
@@ -137,7 +177,13 @@ class SslCommerzPaymentController extends Controller
                 'gateway_payload' => $request->all(),
             ]);
 
-            $service->approvePayment($payment, null);
+            // Execute within tenant context
+            $team = Team::withoutGlobalScopes()->find($payment->team_id);
+            if ($team) {
+                $tenantContext->runWithTenant($team, function () use ($service, $payment) {
+                    $service->approvePayment($payment, null);
+                });
+            }
 
             return response()->json(['status' => 'success', 'message' => 'Payment approved']);
         }
@@ -149,5 +195,40 @@ class SslCommerzPaymentController extends Controller
         ]);
 
         return response()->json(['status' => 'rejected']);
+    }
+
+    /**
+     * Verify SSLCommerz payload signature (verify_sign / verify_key).
+     */
+    protected function verifyGatewaySignature(Request $request): bool
+    {
+        $isSandbox = config('services.sslcommerz.sandbox', true);
+        $verifySign = $request->input('verify_sign');
+        $verifyKey = $request->input('verify_key');
+        $storePasswd = config('services.sslcommerz.store_password', 'sandbox_pass');
+
+        // If in production mode, signature MUST be present and valid
+        if (!$isSandbox) {
+            if (!$verifySign || !$verifyKey) {
+                return false;
+            }
+        }
+
+        // When verify_sign and verify_key are present, compute MD5 hash validation
+        if ($verifySign && $verifyKey) {
+            $keyArray = explode(',', $verifyKey);
+            $hashString = '';
+            foreach ($keyArray as $key) {
+                $trimmedKey = trim($key);
+                $hashString .= $trimmedKey . '=' . $request->input($trimmedKey, '') . '&';
+            }
+            $hashString .= 'store_passwd=' . md5($storePasswd);
+            $computedSign = md5($hashString);
+
+            return hash_equals($computedSign, $verifySign);
+        }
+
+        // In sandbox without signature provided, pass through
+        return true;
     }
 }

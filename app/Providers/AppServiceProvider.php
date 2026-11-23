@@ -75,6 +75,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Enforce Tenant-Bound Sanctum Personal Access Token Model (Gate 3)
+        \Laravel\Sanctum\Sanctum::usePersonalAccessTokenModel(\App\Models\Sanctum\PersonalAccessToken::class);
+
         // Platform Super Admin pre-authorization bypass
         Gate::before(function ($user, $ability, array $arguments = []) {
             if ($user && method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {

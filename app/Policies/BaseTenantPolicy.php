@@ -67,6 +67,10 @@ abstract class BaseTenantPolicy
             return true;
         }
 
-        return $user->can($permission) || $user->hasPermissionTo($permission);
+        try {
+            return $user->can($permission) || $user->hasPermissionTo($permission);
+        } catch (\Throwable $e) {
+            return false;
+        }
     }
 }
