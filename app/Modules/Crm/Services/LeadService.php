@@ -258,8 +258,8 @@ class LeadService
     }
 
     /**
-     * Delete a Lead with strict tenant isolation and converted status safeguards.
-     * Prevents deletion of converted leads regardless of caller context.
+     * Delete a Lead with strict tenant isolation, pessimistic row locking, and atomic concurrency safeguards.
+     * Prevents deletion of converted leads regardless of caller context or concurrent race conditions.
      */
     public function deleteLead(int $teamId, CrmLead $lead): bool
     {
@@ -267,11 +267,42 @@ class LeadService
             throw new TenantIsolationException("Lead does not belong to active tenant.");
         }
 
+        // Fast-path in-memory check
         if ($lead->status === 'converted' || $lead->converted_customer_id !== null) {
             throw new \InvalidArgumentException("Converted lead [ID: {$lead->id}, {$lead->lead_number}] cannot be deleted as it is permanently linked to canonical customer [ID: {$lead->converted_customer_id}].");
         }
 
-        return (bool) $lead->delete();
+        return DB::transaction(function () use ($teamId, $lead) {
+            // Pessimistic lock and fresh database-level state verification
+            /** @var CrmLead|null $freshLead */
+            $freshLead = CrmLead::withoutGlobalScopes()
+                ->where('team_id', $teamId)
+                ->where('id', $lead->id)
+                ->lockForUpdate()
+                ->first();
+
+            if (!$freshLead) {
+                throw new TenantIsolationException("Lead [ID: {$lead->id}] not found in active tenant [ID: {$teamId}].");
+            }
+
+            if ($freshLead->status === 'converted' || $freshLead->converted_customer_id !== null) {
+                throw new \InvalidArgumentException("Converted lead [ID: {$freshLead->id}, {$freshLead->lead_number}] cannot be deleted as it is permanently linked to canonical customer [ID: {$freshLead->converted_customer_id}].");
+            }
+
+            // Atomic conditional delete enforcing status != 'converted' and converted_customer_id IS NULL at execution time
+            $deletedRows = CrmLead::withoutGlobalScopes()
+                ->where('team_id', $teamId)
+                ->where('id', $freshLead->id)
+                ->where('status', '!=', 'converted')
+                ->whereNull('converted_customer_id')
+                ->delete();
+
+            if ($deletedRows === 0) {
+                throw new \InvalidArgumentException("Lead [ID: {$freshLead->id}] could not be deleted because it was converted or no longer eligible for deletion.");
+            }
+
+            return true;
+        });
     }
 
     /**

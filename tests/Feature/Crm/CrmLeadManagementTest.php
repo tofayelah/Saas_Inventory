@@ -745,4 +745,100 @@ class CrmLeadManagementTest extends TestCase
         $this->assertEquals('Untouched Canonical Customer', $customer->name);
         $this->assertEquals('+8801799887766', $customer->phone);
     }
+
+    public function test_deletion_fails_when_lead_was_converted_after_model_was_loaded_in_memory(): void
+    {
+        $leadService = app(\App\Modules\Crm\Services\LeadService::class);
+
+        // 1. Create an unconverted lead
+        $lead = CrmLead::forceCreate([
+            'team_id' => $this->tenantA->id,
+            'lead_number' => 'LEAD-202611-0908',
+            'title' => 'Stale Model Concurrency Race Target',
+            'first_name' => 'Tariq',
+            'last_name' => 'Zaman',
+            'company_name' => 'Zaman Logistics Ltd',
+            'phone' => '+8801711223344',
+            'email' => 'tariq@zamanlogistics.com',
+            'status' => 'qualified',
+            'source' => 'referral',
+            'warehouse_id' => $this->warehouseAlpha->id,
+        ]);
+
+        // 2. Load the unconverted lead into memory (stale model holding status = 'qualified')
+        /** @var CrmLead $staleInMemoryLead */
+        $staleInMemoryLead = CrmLead::find($lead->id);
+        $this->assertEquals('qualified', $staleInMemoryLead->status);
+        $this->assertNull($staleInMemoryLead->converted_customer_id);
+
+        // 3. Convert the lead via service (updates database to status = 'converted' and sets converted_customer_id)
+        $customer = $leadService->convertLeadToCustomer($this->tenantA->id, $lead->id);
+        $this->assertNotNull($customer->id);
+
+        // Confirm database state has changed
+        $this->assertDatabaseHas('crm_leads', [
+            'id' => $lead->id,
+            'status' => 'converted',
+            'converted_customer_id' => $customer->id,
+        ]);
+
+        // 4. Attempt deletion using the previously loaded stale in-memory model
+        // In-memory model still has status = 'qualified', but service must recheck database with lock
+        try {
+            $leadService->deleteLead($this->tenantA->id, $staleInMemoryLead);
+            $this->fail('Expected \InvalidArgumentException was not thrown on stale in-memory lead deletion.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('cannot be deleted as it is permanently linked to canonical customer', $e->getMessage());
+        }
+
+        // 5. Confirm lead remains converted and canonical customer remains intact
+        $this->assertDatabaseHas('crm_leads', [
+            'id' => $lead->id,
+            'status' => 'converted',
+            'converted_customer_id' => $customer->id,
+        ]);
+        $this->assertDatabaseHas('customers', [
+            'id' => $customer->id,
+            'name' => 'Tariq Zaman',
+        ]);
+    }
+
+    public function test_controller_destroy_blocks_stale_lead_concurrent_conversion(): void
+    {
+        // 1. Create an unconverted lead
+        $lead = CrmLead::forceCreate([
+            'team_id' => $this->tenantA->id,
+            'lead_number' => 'LEAD-202611-0909',
+            'title' => 'Controller Concurrency Protection Lead',
+            'first_name' => 'Munir',
+            'last_name' => 'Hasan',
+            'company_name' => 'Hasan Soft',
+            'phone' => '+8801733445566',
+            'email' => 'munir@hasansoft.com',
+            'status' => 'new',
+            'source' => 'website',
+            'warehouse_id' => $this->warehouseAlpha->id,
+        ]);
+
+        // 2. Lead gets converted concurrently in database
+        $leadService = app(\App\Modules\Crm\Services\LeadService::class);
+        $customer = $leadService->convertLeadToCustomer($this->tenantA->id, $lead->id);
+
+        // 3. User attempts delete via controller
+        $response = $this->actingAs($this->ownerA)->delete(route('crm.leads.destroy', $lead->id));
+
+        // Blocked by policy (403) or service exception handler (422)
+        $this->assertTrue(in_array($response->status(), [403, 422]));
+
+        // Lead and customer remain in database
+        $this->assertDatabaseHas('crm_leads', [
+            'id' => $lead->id,
+            'status' => 'converted',
+            'converted_customer_id' => $customer->id,
+        ]);
+        $this->assertDatabaseHas('customers', [
+            'id' => $customer->id,
+            'name' => 'Munir Hasan',
+        ]);
+    }
 }

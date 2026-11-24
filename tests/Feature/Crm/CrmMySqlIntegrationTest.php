@@ -452,4 +452,66 @@ class CrmMySqlIntegrationTest extends TestCase
             ->count();
         $this->assertEquals(1, $customerCount, 'Exactly one customer record must exist in MySQL.');
     }
+
+    /**
+     * Requirement: Test MySQL InnoDB row-locking and atomic conditional deletion concurrency safety.
+     * Stale in-memory lead model must never delete a lead that was concurrently converted in MySQL.
+     */
+    public function test_mysql_concurrent_lead_conversion_and_deletion_race_safety(): void
+    {
+        app(TenantContext::class)->setTenant($this->tenantA->id);
+        $db = DB::connection($this->mysqlConnection);
+
+        // 1. Insert an unconverted lead in MySQL InnoDB
+        $leadId = $db->table('crm_leads')->insertGetId([
+            'team_id' => $this->tenantA->id,
+            'lead_number' => 'LEAD-MYSQL-RACE-001',
+            'title' => 'MySQL Concurrency Race Verification',
+            'first_name' => 'Faisal',
+            'last_name' => 'Karim',
+            'company_name' => 'Karim Textiles Ltd',
+            'phone' => '+8801855667788',
+            'email' => 'faisal@karimtextiles.com',
+            'status' => 'qualified',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // 2. Fetch stale model into memory while unconverted
+        /** @var CrmLead $staleModel */
+        $staleModel = CrmLead::on($this->mysqlConnection)->find($leadId);
+        $this->assertEquals('qualified', $staleModel->status);
+        $this->assertNull($staleModel->converted_customer_id);
+
+        // 3. Concurrently convert lead in MySQL
+        $service = app(LeadService::class);
+        $customer = $service->convertLeadToCustomer($this->tenantA->id, $leadId);
+        $this->assertNotNull($customer->id);
+
+        // Verify MySQL database reflects converted status
+        $rawLead = $db->table('crm_leads')->where('id', $leadId)->first();
+        $this->assertEquals('converted', $rawLead->status);
+        $this->assertEquals($customer->id, $rawLead->converted_customer_id);
+
+        // 4. Invoke deleteLead using stale in-memory model holding status = 'qualified'
+        $exceptionCaught = false;
+        try {
+            $service->deleteLead($this->tenantA->id, $staleModel);
+        } catch (\InvalidArgumentException $e) {
+            $exceptionCaught = true;
+            $this->assertStringContainsString('cannot be deleted as it is permanently linked to canonical customer', $e->getMessage());
+        }
+
+        $this->assertTrue($exceptionCaught, 'deleteLead must throw \InvalidArgumentException when stale model is converted in MySQL.');
+
+        // 5. Verify MySQL row is preserved with converted status and linked customer
+        $persistedLead = $db->table('crm_leads')->where('id', $leadId)->first();
+        $this->assertNotNull($persistedLead, 'Lead row must NOT be deleted from MySQL.');
+        $this->assertEquals('converted', $persistedLead->status);
+        $this->assertEquals($customer->id, $persistedLead->converted_customer_id);
+
+        $persistedCustomer = $db->table('customers')->where('id', $customer->id)->first();
+        $this->assertNotNull($persistedCustomer, 'Canonical customer must remain intact in MySQL.');
+        $this->assertEquals('Faisal Karim', $persistedCustomer->name);
+    }
 }

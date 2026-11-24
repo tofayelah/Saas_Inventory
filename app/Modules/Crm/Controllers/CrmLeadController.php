@@ -288,7 +288,11 @@ class CrmLeadController extends Controller
         }
 
         $leadNumber = $lead->lead_number;
-        $this->leadService->deleteLead($teamId, $lead);
+        try {
+            $this->leadService->deleteLead($teamId, $lead);
+        } catch (\InvalidArgumentException $e) {
+            abort(422, $e->getMessage());
+        }
 
         return redirect()->route('crm.leads.index')
             ->with('success', "Lead {$leadNumber} deleted successfully.");
