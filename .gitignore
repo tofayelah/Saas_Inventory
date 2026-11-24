@@ -76,6 +76,7 @@ desktop.ini
 !docs/CRM_SYSTEM_DESIGN.md
 !docs/CRM_GATE_1_FINAL_AUDIT.md
 !docs/CRM_GATE_1_ACCEPTANCE.md
+!docs/CRM_GATE_2_*.md
 !docs/crm/*.md
 !docs/crm/**/*.md
 docs/crm/*.rar
