@@ -42,6 +42,8 @@ class SalesOrderController extends Controller
 
     public function index(Request $request)
     {
+        $this->authorize('viewAny', SalesOrder::class);
+
         $teamId = $this->resolveTeamId();
 
         $search = $request->input('search');
@@ -87,6 +89,8 @@ class SalesOrderController extends Controller
 
     public function create()
     {
+        $this->authorize('create', SalesOrder::class);
+
         $teamId = $this->resolveTeamId();
 
         $customers = Customer::where('team_id', $teamId)->where('is_active', true)->orderBy('name')->get();
@@ -134,6 +138,8 @@ class SalesOrderController extends Controller
 
     public function store(Request $request, SalesOrderService $service)
     {
+        $this->authorize('create', SalesOrder::class);
+
         $teamId = $this->resolveTeamId();
         $team = Auth::user()?->currentTeam;
 
@@ -281,6 +287,8 @@ class SalesOrderController extends Controller
 
     public function confirm(SalesOrder $order, SalesOrderService $service)
     {
+        $this->authorize('confirm', $order);
+
         $teamId = $this->resolveTeamId();
         abort_if($order->team_id !== $teamId, 403);
 
@@ -291,6 +299,8 @@ class SalesOrderController extends Controller
 
     public function dispatchOrder(SalesOrder $order, SalesOrderService $service)
     {
+        $this->authorize('dispatchOrder', $order);
+
         $teamId = $this->resolveTeamId();
         abort_if($order->team_id !== $teamId, 403);
 
@@ -301,6 +311,8 @@ class SalesOrderController extends Controller
 
     public function complete(SalesOrder $order, SalesOrderService $service)
     {
+        $this->authorize('complete', $order);
+
         $teamId = $this->resolveTeamId();
         abort_if($order->team_id !== $teamId, 403);
 
@@ -311,6 +323,8 @@ class SalesOrderController extends Controller
 
     public function cancel(SalesOrder $order, SalesOrderService $service)
     {
+        $this->authorize('cancel', $order);
+
         $teamId = $this->resolveTeamId();
         abort_if($order->team_id !== $teamId, 403);
 
@@ -321,6 +335,8 @@ class SalesOrderController extends Controller
 
     public function pay(Request $request, SalesOrder $order, SalesOrderService $service)
     {
+        $this->authorize('pay', $order);
+
         $teamId = $this->resolveTeamId();
         abort_if($order->team_id !== $teamId, 403);
 

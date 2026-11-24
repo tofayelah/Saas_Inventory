@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class ChartOfAccount extends Model
+class ChartOfAccount extends Model implements \App\Contracts\TenantAware
 {
     use HasFactory, BelongsToTenant;
 

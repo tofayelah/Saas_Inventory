@@ -40,9 +40,18 @@ class ProductProfitabilityExport implements FromCollection, WithHeadings, WithMa
     public function collection(): Collection
     {
         $query = DB::table('sales_order_items')
-            ->join('sales_orders', 'sales_order_items.sales_order_id', '=', 'sales_orders.id')
-            ->join('products', 'sales_order_items.product_id', '=', 'products.id')
-            ->leftJoin('product_categories', 'products.category_id', '=', 'product_categories.id')
+            ->join('sales_orders', function ($join) {
+                $join->on('sales_order_items.sales_order_id', '=', 'sales_orders.id')
+                     ->where('sales_orders.team_id', '=', $this->teamId);
+            })
+            ->join('products', function ($join) {
+                $join->on('sales_order_items.product_id', '=', 'products.id')
+                     ->where('products.team_id', '=', $this->teamId);
+            })
+            ->leftJoin('product_categories', function ($join) {
+                $join->on('products.category_id', '=', 'product_categories.id')
+                     ->where('product_categories.team_id', '=', $this->teamId);
+            })
             ->where('sales_orders.team_id', $this->teamId)
             ->whereNotIn('sales_orders.status', ['cancelled', 'draft'])
             ->groupBy('products.id', 'products.sku', 'products.name', 'product_categories.name')

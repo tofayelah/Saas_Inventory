@@ -29,8 +29,14 @@ class StockAgingExport implements FromCollection, WithHeadings, WithMapping, Sho
     public function collection(): Collection
     {
         $products = DB::table('products')
-            ->leftJoin('product_categories', 'products.category_id', '=', 'product_categories.id')
-            ->join('stock_levels', 'products.id', '=', 'stock_levels.product_id')
+            ->leftJoin('product_categories', function ($join) {
+                $join->on('products.category_id', '=', 'product_categories.id')
+                     ->where('product_categories.team_id', '=', $this->teamId);
+            })
+            ->join('stock_levels', function ($join) {
+                $join->on('products.id', '=', 'stock_levels.product_id')
+                     ->where('stock_levels.team_id', '=', $this->teamId);
+            })
             ->where('products.team_id', $this->teamId)
             ->where('products.is_active', true)
             ->groupBy('products.id', 'products.sku', 'products.name', 'products.unit', 'products.cost_price', 'products.unit_price', 'products.created_at', 'product_categories.name')

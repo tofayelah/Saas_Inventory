@@ -34,6 +34,8 @@ class ExpenseController extends Controller
 
     public function index(Request $request, FinancialAccountService $accountService)
     {
+        $this->authorize('viewAny', Expense::class);
+
         $teamId = $this->resolveTeamId();
 
         $search = $request->input('search');
@@ -107,6 +109,8 @@ class ExpenseController extends Controller
 
     public function store(Request $request, HrService $service)
     {
+        $this->authorize('create', Expense::class);
+
         $teamId = $this->resolveTeamId();
 
         $validated = $request->validate([
@@ -129,6 +133,8 @@ class ExpenseController extends Controller
 
     public function destroy(Expense $expense)
     {
+        $this->authorize('delete', $expense);
+
         $teamId = $this->resolveTeamId();
         abort_if($expense->team_id !== $teamId, 403);
 
@@ -140,6 +146,8 @@ class ExpenseController extends Controller
 
     public function storeCategory(Request $request)
     {
+        $this->authorize('create', Expense::class);
+
         $teamId = $this->resolveTeamId();
 
         $validated = $request->validate([
@@ -165,6 +173,8 @@ class ExpenseController extends Controller
 
     public function destroyCategory(ExpenseCategory $expenseCategory)
     {
+        $this->authorize('delete', $expenseCategory);
+
         $teamId = $this->resolveTeamId();
         abort_if($expenseCategory->team_id !== $teamId, 403);
 

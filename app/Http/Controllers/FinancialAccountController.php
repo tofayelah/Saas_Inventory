@@ -19,6 +19,8 @@ class FinancialAccountController extends Controller
 {
     public function index(Request $request)
     {
+        $this->authorize('viewAny', FinancialAccount::class);
+
         $teamId = Auth::user()->current_team_id;
 
         $search = $request->input('search');
@@ -66,6 +68,8 @@ class FinancialAccountController extends Controller
 
     public function store(Request $request)
     {
+        $this->authorize('create', FinancialAccount::class);
+
         $teamId = Auth::user()->current_team_id;
 
         $validated = $request->validate([
@@ -130,6 +134,8 @@ class FinancialAccountController extends Controller
 
     public function update(Request $request, FinancialAccount $account)
     {
+        $this->authorize('update', $account);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($account->team_id !== $teamId, 403);
 
@@ -173,6 +179,8 @@ class FinancialAccountController extends Controller
 
     public function toggleActive(FinancialAccount $account)
     {
+        $this->authorize('toggleActive', $account);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($account->team_id !== $teamId, 403);
 
@@ -184,6 +192,8 @@ class FinancialAccountController extends Controller
 
     public function setDefault(FinancialAccount $account)
     {
+        $this->authorize('setDefault', $account);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($account->team_id !== $teamId, 403);
 
@@ -197,6 +207,8 @@ class FinancialAccountController extends Controller
 
     public function destroy(FinancialAccount $account)
     {
+        $this->authorize('delete', $account);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($account->team_id !== $teamId, 403);
 

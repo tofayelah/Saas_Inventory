@@ -23,6 +23,11 @@ class RemoveTeamMember implements RemovesTeamMembers
 
         $team->removeUser($teamMember);
 
+        setPermissionsTeamId($team->id);
+        $teamMember->syncRoles([]);
+        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+        \Illuminate\Support\Facades\Cache::forget("user_auth_rp_{$teamMember->id}_{$team->id}");
+
         TeamMemberRemoved::dispatch($team, $teamMember);
     }
 

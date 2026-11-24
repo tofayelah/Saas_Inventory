@@ -14,6 +14,8 @@ class WarehouseController extends Controller
 {
     public function index(Request $request)
     {
+        $this->authorize('viewAny', Warehouse::class);
+
         $teamId = Auth::user()->current_team_id;
         $search = $request->input('search', '');
 
@@ -57,6 +59,8 @@ class WarehouseController extends Controller
 
     public function store(Request $request, SubscriptionService $subscriptionService)
     {
+        $this->authorize('create', Warehouse::class);
+
         $user = Auth::user();
         $team = $user->currentTeam;
         $teamId = $user->current_team_id;
@@ -94,6 +98,8 @@ class WarehouseController extends Controller
 
     public function update(Request $request, Warehouse $warehouse)
     {
+        $this->authorize('update', $warehouse);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($warehouse->team_id !== $teamId, 403);
 
@@ -120,6 +126,8 @@ class WarehouseController extends Controller
 
     public function setDefault(Warehouse $warehouse)
     {
+        $this->authorize('setDefault', $warehouse);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($warehouse->team_id !== $teamId, 403);
 
@@ -131,6 +139,8 @@ class WarehouseController extends Controller
 
     public function destroy(Warehouse $warehouse)
     {
+        $this->authorize('delete', $warehouse);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($warehouse->team_id !== $teamId, 403);
 
@@ -157,6 +167,8 @@ class WarehouseController extends Controller
 
     public function inspect(Warehouse $warehouse)
     {
+        $this->authorize('inspect', $warehouse);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($warehouse->team_id !== $teamId, 403);
 

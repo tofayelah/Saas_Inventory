@@ -27,9 +27,18 @@ class StockValuationExport implements FromCollection, WithHeadings, WithMapping,
     public function collection(): Collection
     {
         $query = DB::table('stock_levels')
-            ->join('products', 'stock_levels.product_id', '=', 'products.id')
-            ->join('warehouses', 'stock_levels.warehouse_id', '=', 'warehouses.id')
-            ->leftJoin('product_categories', 'products.category_id', '=', 'product_categories.id')
+            ->join('products', function ($join) {
+                $join->on('stock_levels.product_id', '=', 'products.id')
+                     ->where('products.team_id', '=', $this->teamId);
+            })
+            ->join('warehouses', function ($join) {
+                $join->on('stock_levels.warehouse_id', '=', 'warehouses.id')
+                     ->where('warehouses.team_id', '=', $this->teamId);
+            })
+            ->leftJoin('product_categories', function ($join) {
+                $join->on('products.category_id', '=', 'product_categories.id')
+                     ->where('product_categories.team_id', '=', $this->teamId);
+            })
             ->where('stock_levels.team_id', $this->teamId)
             ->select([
                 'products.sku',

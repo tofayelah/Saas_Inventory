@@ -11,6 +11,7 @@ use App\Models\TenantSubscription;
 use App\Models\User;
 use App\Models\Warehouse;
 use App\Services\AccountingService;
+use App\Services\SecurityAuditService;
 use App\Services\SubscriptionService;
 use Carbon\Carbon;
 use Database\Seeders\RolesAndPermissionsSeeder;
@@ -351,11 +352,20 @@ class SuperAdminController extends Controller
     }
 
     /**
-     * Impersonate a tenant by switching workspace context.
+     * Impersonate a tenant by switching workspace context with security audit logging.
      */
-    public function switchToTenant(Team $team)
+    public function switchToTenant(Request $request, Team $team, SecurityAuditService $auditService)
     {
         $user = Auth::user();
+
+        if (!$user || !$user->isSuperAdmin()) {
+            abort(403, 'Unauthorized. Platform Super-Administrator privileges required.');
+        }
+
+        $reason = $request->input('reason', 'Platform Super-Admin Workspace Impersonation');
+
+        // Security Audit Logging (SEC-G2-01)
+        $auditService->logImpersonationStart($user, $team, $reason, $request);
 
         $user->forceFill([
             'current_team_id' => $team->id,
@@ -364,6 +374,28 @@ class SuperAdminController extends Controller
         session()->put('impersonated_tenant_id', $team->id);
 
         return redirect()->route('dashboard')->with('success', "Switched workspace context to '{$team->name}'.");
+    }
+
+    /**
+     * Terminate tenant impersonation and return to Super Admin control plane with audit logging.
+     */
+    public function exitTenant(Request $request, SecurityAuditService $auditService)
+    {
+        $user = Auth::user();
+        if ($user && $user->isSuperAdmin()) {
+            $impersonatedTeamId = session('impersonated_tenant_id') ?: $user->current_team_id;
+            if ($impersonatedTeamId) {
+                // Security Audit Logging (SEC-G2-01)
+                $auditService->logImpersonationEnd($user, (int) $impersonatedTeamId, $request);
+            }
+
+            session()->forget('impersonated_tenant_id');
+            $user->forceFill(['current_team_id' => null])->save();
+
+            return redirect()->route('admin.dashboard')->with('success', 'Exited tenant workspace. Back to Platform Super-Admin mode.');
+        }
+
+        return redirect()->route('dashboard');
     }
 
     /**

@@ -19,6 +19,8 @@ class PurchaseOrderController extends Controller
 {
     public function index(Request $request)
     {
+        $this->authorize('viewAny', PurchaseOrder::class);
+
         $teamId = Auth::user()->current_team_id;
 
         $search = $request->input('search');
@@ -67,6 +69,8 @@ class PurchaseOrderController extends Controller
 
     public function create()
     {
+        $this->authorize('create', PurchaseOrder::class);
+
         $teamId = Auth::user()->current_team_id;
 
         $suppliers = Supplier::where('team_id', $teamId)->where('is_active', true)->orderBy('name')->get();
@@ -90,6 +94,8 @@ class PurchaseOrderController extends Controller
 
     public function store(Request $request, PurchaseOrderService $service)
     {
+        $this->authorize('create', PurchaseOrder::class);
+
         $user = Auth::user();
         $teamId = $user->current_team_id;
 
@@ -208,6 +214,8 @@ class PurchaseOrderController extends Controller
 
     public function edit(PurchaseOrder $order)
     {
+        $this->authorize('update', $order);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($order->team_id !== $teamId, 403);
 
@@ -232,6 +240,8 @@ class PurchaseOrderController extends Controller
 
     public function update(Request $request, PurchaseOrder $order, PurchaseOrderService $service)
     {
+        $this->authorize('update', $order);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($order->team_id !== $teamId, 403);
 
@@ -287,6 +297,8 @@ class PurchaseOrderController extends Controller
 
     public function pay(Request $request, PurchaseOrder $order, PurchaseOrderService $service)
     {
+        $this->authorize('pay', $order);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($order->team_id !== $teamId, 403);
 
@@ -339,6 +351,8 @@ class PurchaseOrderController extends Controller
 
     public function markOrdered(PurchaseOrder $order, PurchaseOrderService $service)
     {
+        $this->authorize('markOrdered', $order);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($order->team_id !== $teamId, 403);
 
@@ -349,6 +363,8 @@ class PurchaseOrderController extends Controller
 
     public function receive(Request $request, PurchaseOrder $order, PurchaseOrderService $service)
     {
+        $this->authorize('receive', $order);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($order->team_id !== $teamId, 403);
 
@@ -380,6 +396,8 @@ class PurchaseOrderController extends Controller
 
     public function cancel(PurchaseOrder $order, PurchaseOrderService $service)
     {
+        $this->authorize('cancel', $order);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($order->team_id !== $teamId, 403);
 
@@ -390,6 +408,8 @@ class PurchaseOrderController extends Controller
 
     public function close(Request $request, PurchaseOrder $order, PurchaseOrderService $service)
     {
+        $this->authorize('close', $order);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($order->team_id !== $teamId, 403);
 

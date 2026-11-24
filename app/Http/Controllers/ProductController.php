@@ -22,6 +22,8 @@ class ProductController extends Controller
 {
     public function index(Request $request)
     {
+        $this->authorize('viewAny', Product::class);
+
         $teamId = Auth::user()->current_team_id;
 
         $search = $request->input('search', '');
@@ -79,6 +81,8 @@ class ProductController extends Controller
 
     public function create()
     {
+        $this->authorize('create', Product::class);
+
         $teamId = Auth::user()->current_team_id;
 
         $categories = ProductCategory::where('team_id', $teamId)->orderBy('name')->get();
@@ -101,6 +105,8 @@ class ProductController extends Controller
 
     public function store(Request $request, StockService $stockService, SubscriptionService $subscriptionService)
     {
+        $this->authorize('create', Product::class);
+
         $user = Auth::user();
         $team = $user->currentTeam;
         $teamId = $user->current_team_id;
@@ -162,6 +168,8 @@ class ProductController extends Controller
 
     public function edit(Product $product)
     {
+        $this->authorize('update', $product);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($product->team_id !== $teamId, 403);
 
@@ -179,6 +187,8 @@ class ProductController extends Controller
 
     public function update(Request $request, Product $product)
     {
+        $this->authorize('update', $product);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($product->team_id !== $teamId, 403);
 
@@ -228,6 +238,8 @@ class ProductController extends Controller
 
     public function destroy(Product $product)
     {
+        $this->authorize('delete', $product);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($product->team_id !== $teamId, 403);
 
@@ -246,6 +258,8 @@ class ProductController extends Controller
 
     public function lookupBarcode(Request $request)
     {
+        $this->authorize('viewAny', Product::class);
+
         $code = trim($request->input('barcode', ''));
         if (!$code) {
             return response()->json(['found' => false]);
@@ -282,6 +296,8 @@ class ProductController extends Controller
 
     public function inspectStock(Product $product)
     {
+        $this->authorize('inspectStock', $product);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($product->team_id !== $teamId, 403);
 
@@ -329,6 +345,8 @@ class ProductController extends Controller
 
     public function export(Request $request, CatalogImportExportService $service)
     {
+        $this->authorize('export', Product::class);
+
         $teamId = Auth::user()->current_team_id;
         $format = strtolower($request->query('format', 'xlsx'));
 
@@ -343,6 +361,8 @@ class ProductController extends Controller
 
     public function import(Request $request, CatalogImportExportService $service)
     {
+        $this->authorize('import', Product::class);
+
         $teamId = Auth::user()->current_team_id;
 
         $request->validate([

@@ -18,6 +18,8 @@ class DeliveryChallanController extends Controller
 {
     public function index(Request $request)
     {
+        $this->authorize('viewAny', DeliveryChallan::class);
+
         $teamId = Auth::user()->current_team_id;
 
         $search = $request->input('search');
@@ -62,6 +64,8 @@ class DeliveryChallanController extends Controller
 
     public function create(Request $request)
     {
+        $this->authorize('create', DeliveryChallan::class);
+
         $teamId = Auth::user()->current_team_id;
 
         $orders = SalesOrder::where('team_id', $teamId)
@@ -88,6 +92,8 @@ class DeliveryChallanController extends Controller
 
     public function store(Request $request)
     {
+        $this->authorize('create', DeliveryChallan::class);
+
         $teamId = Auth::user()->current_team_id;
 
         $validated = $request->validate([
@@ -167,6 +173,8 @@ class DeliveryChallanController extends Controller
 
     public function edit(DeliveryChallan $challan)
     {
+        $this->authorize('update', $challan);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($challan->team_id !== $teamId, 403);
 
@@ -190,6 +198,8 @@ class DeliveryChallanController extends Controller
 
     public function update(Request $request, DeliveryChallan $challan)
     {
+        $this->authorize('update', $challan);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($challan->team_id !== $teamId, 403);
 
@@ -239,6 +249,8 @@ class DeliveryChallanController extends Controller
 
     public function markDelivered(DeliveryChallan $challan)
     {
+        $this->authorize('deliver', $challan);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($challan->team_id !== $teamId, 403);
 
@@ -249,6 +261,8 @@ class DeliveryChallanController extends Controller
 
     public function destroy(DeliveryChallan $challan)
     {
+        $this->authorize('delete', $challan);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($challan->team_id !== $teamId, 403);
 

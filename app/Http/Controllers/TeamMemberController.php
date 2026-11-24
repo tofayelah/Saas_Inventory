@@ -74,8 +74,13 @@ class TeamMemberController extends Controller
 
         // 2. Add other team members
         foreach ($activeTeam->users as $member) {
-            $roleKey = $member->membership->role ?? 'editor';
-            $roleTitle = $roleKey === 'admin' ? 'Administrator' : 'Editor / Staff';
+            $roleKey = $member->membership->role ?? 'staff';
+            $roleTitle = match ($roleKey) {
+                'admin' => 'Administrator',
+                'staff', 'editor' => 'Staff / Operations',
+                'viewer' => 'Viewer',
+                default => ucfirst($roleKey),
+            };
             $assignedWhId = $member->membership->warehouse_id;
             $assignedWh = $assignedWhId ? $warehouses->firstWhere('id', $assignedWhId) : null;
 
@@ -100,29 +105,41 @@ class TeamMemberController extends Controller
             [
                 'key' => 'admin',
                 'name' => 'Administrator',
-                'badge' => 'Full Access',
-                'description' => 'Can manage inventory, sales, purchases, services, accounting, and add other staff members.',
+                'badge' => 'Management Access',
+                'description' => 'Can manage inventory, products, warehouses, orders, accounting, HR, and reports (excluding billing & team ownership).',
                 'permissions' => [
                     'Manage Products & Inventory',
+                    'Manage Warehouses & Outlets',
                     'Process Sales & Invoicing',
                     'Manage Purchase Orders & Vendors',
                     'Double-Entry Accounting & Ledger',
                     'HR, Payroll & Expenses',
-                    'Invite & Manage Team Staff',
+                    'View Business & Financial Reports',
                 ],
             ],
             [
-                'key' => 'editor',
-                'name' => 'Editor / Staff',
+                'key' => 'staff',
+                'name' => 'Staff / Operations',
                 'badge' => 'Operational',
                 'description' => 'Day-to-day operations: creating orders, issuing challans, receiving stock, and tickets.',
                 'permissions' => [
-                    'Create Sales Orders & Challans',
-                    'Receive Stock & Warranties',
+                    'Process Sales Orders & POS',
+                    'Receive Stock & Handle Warranties',
                     'Handle Workshop Service Tickets',
-                    'Record Customer Collections',
-                    'Restricted from Company Settings',
-                    'Restricted from Chart of Accounts',
+                    'Issue Delivery Challans',
+                    'Restricted from Products/Warehouses CRUD',
+                    'Restricted from Accounting & Payroll',
+                ],
+            ],
+            [
+                'key' => 'viewer',
+                'name' => 'Viewer',
+                'badge' => 'Read Only',
+                'description' => 'Read-only access for auditors and reviewers to inspect reports and dashboards.',
+                'permissions' => [
+                    'View Sales & Stock Reports',
+                    'View Accounting & Trial Balance',
+                    'Restricted from All Mutations',
                 ],
             ],
         ];
@@ -162,12 +179,14 @@ class TeamMemberController extends Controller
 
         $validated = $request->validate([
             'email' => 'required|email|max:255',
-            'role' => 'required|string|in:admin,editor',
+            'role' => 'required|string|in:admin,editor,staff,viewer',
             'name' => 'nullable|string|max:255',
             'warehouse_id' => ['nullable', Rule::exists('warehouses', 'id')->where('team_id', $team->id)],
         ]);
 
         $email = strtolower(trim($validated['email']));
+        $rawRole = $validated['role'];
+        $spatieRole = $rawRole === 'editor' ? 'staff' : $rawRole;
 
         // Check if user is already on the team
         if ($team->owner && strtolower($team->owner->email) === $email) {
@@ -197,13 +216,20 @@ class TeamMemberController extends Controller
 
         // Attach to team with role & branch assignment
         $team->users()->attach($memberUser->id, [
-            'role' => $validated['role'],
+            'role' => $rawRole,
             'warehouse_id' => $validated['warehouse_id'] ?? null,
         ]);
 
         if ($memberUser->current_team_id === null) {
             $memberUser->forceFill(['current_team_id' => $team->id])->save();
         }
+
+        // Sync Spatie role & invalidate permission caches
+        \Database\Seeders\RolesAndPermissionsSeeder::seedRolesForTeam($team->id);
+        setPermissionsTeamId($team->id);
+        $memberUser->syncRoles([$spatieRole]);
+        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+        \Illuminate\Support\Facades\Cache::forget("user_auth_rp_{$memberUser->id}_{$team->id}");
 
         $successMsg = $tempPassword
             ? "New user {$memberUser->name} invited to {$team->name}. Temporary login password: {$tempPassword}"
@@ -225,7 +251,7 @@ class TeamMemberController extends Controller
         }
 
         $validated = $request->validate([
-            'role' => 'required|string|in:admin,editor',
+            'role' => 'required|string|in:admin,editor,staff,viewer',
             'warehouse_id' => ['nullable', Rule::exists('warehouses', 'id')->where('team_id', $team->id)],
         ]);
 
@@ -239,12 +265,21 @@ class TeamMemberController extends Controller
             return back()->with('error', 'This user is not a member of this team.');
         }
 
+        $rawRole = $validated['role'];
+        $spatieRole = $rawRole === 'editor' ? 'staff' : $rawRole;
+
         $team->users()->updateExistingPivot($user->id, [
-            'role' => $validated['role'],
+            'role' => $rawRole,
             'warehouse_id' => $validated['warehouse_id'] ?? null,
         ]);
 
-        $roleTitle = $validated['role'] === 'admin' ? 'Administrator' : 'Editor / Staff';
+        // Sync Spatie role & invalidate permission caches
+        \Database\Seeders\RolesAndPermissionsSeeder::seedRolesForTeam($team->id);
+        setPermissionsTeamId($team->id);
+        $user->syncRoles([$spatieRole]);
+        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+        \Illuminate\Support\Facades\Cache::forget("user_auth_rp_{$user->id}_{$team->id}");
+
         return back()->with('success', "Updated role and branch assignment for {$user->name}.");
     }
 
@@ -271,6 +306,12 @@ class TeamMemberController extends Controller
         }
 
         $team->users()->detach($user->id);
+
+        // Remove Spatie roles & invalidate permission caches
+        setPermissionsTeamId($team->id);
+        $user->syncRoles([]);
+        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+        \Illuminate\Support\Facades\Cache::forget("user_auth_rp_{$user->id}_{$team->id}");
 
         if ($user->current_team_id === $team->id) {
             $user->forceFill(['current_team_id' => $user->personalTeam()?->id])->save();

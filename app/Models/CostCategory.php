@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class CostCategory extends Model
+class CostCategory extends Model implements \App\Contracts\TenantAware
 {
     use HasFactory, BelongsToTenant;
 

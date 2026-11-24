@@ -38,4 +38,10 @@ return [
         'endpoint' => env('BULKSMSBD_ENDPOINT', 'https://bulksmsbd.net/api/smsapi'),
     ],
 
+    'sslcommerz' => [
+        'store_id' => env('SSLCZ_STORE_ID', 'saas_sandbox'),
+        'store_password' => env('SSLCZ_STORE_PASSWORD', 'sandbox_pass'),
+        'sandbox' => env('SSLCZ_SANDBOX', true),
+    ],
+
 ];

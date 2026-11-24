@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class ServiceTicketItem extends Model
+class ServiceTicketItem extends Model implements \App\Contracts\TenantAware
 {
     use HasFactory, BelongsToTenant;
 

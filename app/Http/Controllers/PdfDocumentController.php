@@ -455,6 +455,8 @@ class PdfDocumentController extends Controller
      */
     public function trialBalancePdf(Request $request, \App\Services\AccountingService $accountingService)
     {
+        $this->authorize('export-financial-reports');
+
         $user = Auth::user();
         $team = $user->currentTeam;
         $asOfDate = $request->input('as_of_date', now()->toDateString());
@@ -488,6 +490,8 @@ class PdfDocumentController extends Controller
      */
     public function profitAndLossPdf(Request $request, \App\Services\AccountingService $accountingService)
     {
+        $this->authorize('export-financial-reports');
+
         $user = Auth::user();
         $team = $user->currentTeam;
         $startDate = $request->input('start_date', now()->startOfYear()->toDateString());
@@ -522,6 +526,8 @@ class PdfDocumentController extends Controller
      */
     public function balanceSheetPdf(Request $request, \App\Services\AccountingService $accountingService)
     {
+        $this->authorize('export-financial-reports');
+
         $user = Auth::user();
         $team = $user->currentTeam;
         $asOfDate = $request->input('as_of_date', now()->toDateString());

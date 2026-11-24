@@ -11,12 +11,11 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
-class FinancialAccount extends Model
+class FinancialAccount extends Model implements \App\Contracts\TenantAware
 {
     use HasFactory, BelongsToTenant, SoftDeletes;
 
     protected $fillable = [
-        'team_id',
         'name',
         'type',
         'institution_name',

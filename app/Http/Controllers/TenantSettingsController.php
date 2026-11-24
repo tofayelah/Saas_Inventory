@@ -18,10 +18,15 @@ class TenantSettingsController extends Controller
 {
     public function index(Request $request)
     {
-        $team = Auth::user()->currentTeam;
+        $user = Auth::user();
+        $team = $user->currentTeam;
 
         if (!$team) {
             abort(403, 'No active tenant workspace selected.');
+        }
+
+        if (!$user->isSuperAdmin() && !$user->ownsTeam($team) && !$user->hasRole('admin')) {
+            abort(403, 'Unauthorized. Only organization owners or administrators can view company settings.');
         }
 
         return Inertia::render('Settings/Company', [
@@ -90,10 +95,13 @@ class TenantSettingsController extends Controller
             'report_margin_bottom' => 'nullable|integer|min:0|max:150',
         ]);
 
-        // Handle Invoice Background Upload
+        // Handle Invoice Background Upload (Private Storage - SEC-G3-REV-04)
         if ($request->hasFile('invoice_bg')) {
             if ($team->invoice_bg_path) {
                 try {
+                    if (Storage::disk('private')->exists($team->invoice_bg_path)) {
+                        Storage::disk('private')->delete($team->invoice_bg_path);
+                    }
                     if (Storage::disk('public')->exists($team->invoice_bg_path)) {
                         Storage::disk('public')->delete($team->invoice_bg_path);
                     }
@@ -101,13 +109,16 @@ class TenantSettingsController extends Controller
                     Log::warning("Failed to delete previous invoice background '{$team->invoice_bg_path}': " . $e->getMessage());
                 }
             }
-            $validated['invoice_bg_path'] = $request->file('invoice_bg')->store("tenants/{$team->id}/letterheads", 'public');
+            $validated['invoice_bg_path'] = $request->file('invoice_bg')->store("tenants/{$team->id}/letterheads", 'private');
         }
 
-        // Handle Report Background Upload
+        // Handle Report Background Upload (Private Storage - SEC-G3-REV-04)
         if ($request->hasFile('report_bg')) {
             if ($team->report_bg_path) {
                 try {
+                    if (Storage::disk('private')->exists($team->report_bg_path)) {
+                        Storage::disk('private')->delete($team->report_bg_path);
+                    }
                     if (Storage::disk('public')->exists($team->report_bg_path)) {
                         Storage::disk('public')->delete($team->report_bg_path);
                     }
@@ -115,7 +126,7 @@ class TenantSettingsController extends Controller
                     Log::warning("Failed to delete previous report background '{$team->report_bg_path}': " . $e->getMessage());
                 }
             }
-            $validated['report_bg_path'] = $request->file('report_bg')->store("tenants/{$team->id}/letterheads", 'public');
+            $validated['report_bg_path'] = $request->file('report_bg')->store("tenants/{$team->id}/letterheads", 'private');
         }
 
         $team->update($validated);
@@ -141,6 +152,9 @@ class TenantSettingsController extends Controller
 
         if ($team->invoice_bg_path) {
             try {
+                if (Storage::disk('private')->exists($team->invoice_bg_path)) {
+                    Storage::disk('private')->delete($team->invoice_bg_path);
+                }
                 if (Storage::disk('public')->exists($team->invoice_bg_path)) {
                     Storage::disk('public')->delete($team->invoice_bg_path);
                 }
@@ -172,6 +186,9 @@ class TenantSettingsController extends Controller
 
         if ($team->report_bg_path) {
             try {
+                if (Storage::disk('private')->exists($team->report_bg_path)) {
+                    Storage::disk('private')->delete($team->report_bg_path);
+                }
                 if (Storage::disk('public')->exists($team->report_bg_path)) {
                     Storage::disk('public')->delete($team->report_bg_path);
                 }
@@ -310,6 +327,41 @@ class TenantSettingsController extends Controller
         return response($pdf->output(), 200, [
             'Content-Type' => 'application/pdf',
             'Content-Disposition' => 'inline; filename="sample-report-preview.pdf"',
+        ]);
+    }
+
+    /**
+     * Authenticated stream for private tenant letterhead background (SEC-G3-POST-02).
+     */
+    public function streamLetterhead(Request $request, string $type)
+    {
+        $user = Auth::user();
+        $team = $user?->currentTeam;
+
+        if (!$team) {
+            abort(403, 'No active tenant workspace selected.');
+        }
+
+        if (!$user->isSuperAdmin() && !$user->ownsTeam($team) && !$user->hasTeamRole($team, 'admin')) {
+            abort(403, 'Unauthorized. Only organization owners or administrators can view letterheads.');
+        }
+
+        $path = match ($type) {
+            'invoice' => $team->getInvoiceBgAbsolutePath(),
+            'report' => $team->getReportBgAbsolutePath(),
+            default => null,
+        };
+
+        if (!$path || !file_exists($path)) {
+            abort(404, 'Letterhead file not found.');
+        }
+
+        $mimeType = mime_content_type($path) ?: 'image/png';
+
+        return response()->file($path, [
+            'Content-Type' => $mimeType,
+            'X-Content-Type-Options' => 'nosniff',
+            'Cache-Control' => 'private, no-cache, no-store, must-revalidate',
         ]);
     }
 }

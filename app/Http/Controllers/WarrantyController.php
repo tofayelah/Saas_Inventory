@@ -15,6 +15,8 @@ class WarrantyController extends Controller
 {
     public function index(Request $request)
     {
+        $this->authorize('viewAny', ProductSerial::class);
+
         $teamId = Auth::user()->current_team_id;
 
         $search = $request->input('search', '');
@@ -78,6 +80,8 @@ class WarrantyController extends Controller
 
     public function markDefective(Request $request, ProductSerial $serial, SerialService $serialService)
     {
+        $this->authorize('markDefective', $serial);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($serial->team_id !== $teamId, 403);
 

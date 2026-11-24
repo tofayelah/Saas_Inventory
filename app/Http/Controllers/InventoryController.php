@@ -17,6 +17,8 @@ class InventoryController extends Controller
 {
     public function index(Request $request)
     {
+        $this->authorize('viewAny', Product::class);
+
         $teamId = Auth::user()->current_team_id;
         $search = trim($request->query('search', ''));
         $warehouseId = $request->query('warehouse_id');
@@ -32,9 +34,12 @@ class InventoryController extends Controller
         // Global KPI Metrics across all inventory
         $totalUnits = (float) StockLevel::where('team_id', $teamId)->sum('quantity');
 
-        // Total valuation: join stock_levels with products
+        // Total valuation: join stock_levels with products (Hardened Tenant Join - SEC-G4-PRI-04)
         $totalValuation = (float) DB::table('stock_levels')
-            ->join('products', 'stock_levels.product_id', '=', 'products.id')
+            ->join('products', function ($join) use ($teamId) {
+                $join->on('stock_levels.product_id', '=', 'products.id')
+                     ->where('products.team_id', '=', $teamId);
+            })
             ->where('stock_levels.team_id', $teamId)
             ->whereNull('products.deleted_at')
             ->sum(DB::raw('stock_levels.quantity * products.cost_price'));
@@ -57,10 +62,12 @@ class InventoryController extends Controller
             })
             ->count();
 
-        // Total Incoming Units from pending purchase orders
+        // Total Incoming Units from pending purchase orders (Hardened Tenant Join - SEC-G4-PRI-04)
         $totalIncomingUnits = (float) DB::table('purchase_order_items')
-            ->join('purchase_orders', 'purchase_order_items.purchase_order_id', '=', 'purchase_orders.id')
-            ->where('purchase_orders.team_id', $teamId)
+            ->join('purchase_orders', function ($join) use ($teamId) {
+                $join->on('purchase_order_items.purchase_order_id', '=', 'purchase_orders.id')
+                     ->where('purchase_orders.team_id', '=', $teamId);
+            })
             ->whereIn('purchase_orders.status', ['ordered', 'partially_received'])
             ->sum(DB::raw('purchase_order_items.quantity - purchase_order_items.received_quantity'));
 
@@ -109,7 +116,10 @@ class InventoryController extends Controller
         $productIds = $paginatedProducts->pluck('id')->all();
 
         $incomingMap = empty($productIds) ? collect() : DB::table('purchase_order_items')
-            ->join('purchase_orders', 'purchase_order_items.purchase_order_id', '=', 'purchase_orders.id')
+            ->join('purchase_orders', function ($join) use ($teamId) {
+                $join->on('purchase_order_items.purchase_order_id', '=', 'purchase_orders.id')
+                     ->where('purchase_orders.team_id', '=', $teamId);
+            })
             ->where('purchase_orders.team_id', $teamId)
             ->whereIn('purchase_orders.status', ['ordered', 'partially_received'])
             ->when($warehouseId, function ($q) use ($warehouseId) {
@@ -222,6 +232,8 @@ class InventoryController extends Controller
         $product = Product::where('team_id', $teamId)->findOrFail($validated['product_id']);
         $warehouse = Warehouse::where('team_id', $teamId)->findOrFail($validated['warehouse_id']);
 
+        $this->authorize('inspectStock', $product);
+
         try {
             $stockService->adjust(
                 warehouseId: $warehouse->id,
@@ -251,6 +263,8 @@ class InventoryController extends Controller
         $product = Product::where('team_id', $teamId)->findOrFail($validated['product_id']);
         $fromWh = Warehouse::where('team_id', $teamId)->findOrFail($validated['from_warehouse_id']);
         $toWh = Warehouse::where('team_id', $teamId)->findOrFail($validated['to_warehouse_id']);
+
+        $this->authorize('inspectStock', $product);
 
         try {
             $stockService->transfer(

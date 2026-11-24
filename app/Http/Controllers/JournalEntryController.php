@@ -15,6 +15,8 @@ class JournalEntryController extends Controller
 {
     public function index(Request $request)
     {
+        $this->authorize('viewAny', JournalEntry::class);
+
         $teamId = Auth::user()->current_team_id;
 
         $search = $request->input('search');
@@ -53,6 +55,8 @@ class JournalEntryController extends Controller
 
     public function create()
     {
+        $this->authorize('create', JournalEntry::class);
+
         $teamId = Auth::user()->current_team_id;
 
         $accounts = ChartOfAccount::where('team_id', $teamId)
@@ -74,6 +78,8 @@ class JournalEntryController extends Controller
 
     public function store(Request $request, AccountingService $accountingService)
     {
+        $this->authorize('create', JournalEntry::class);
+
         $teamId = Auth::user()->current_team_id;
 
         $validated = $request->validate([
@@ -99,6 +105,8 @@ class JournalEntryController extends Controller
 
     public function show(JournalEntry $entry)
     {
+        $this->authorize('view', $entry);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($entry->team_id !== $teamId, 403);
 

@@ -15,6 +15,8 @@ class PayrollController extends Controller
 {
     public function index(Request $request, FinancialAccountService $accountService)
     {
+        $this->authorize('viewAny', Payroll::class);
+
         $teamId = Auth::user()->current_team_id;
 
         $search = $request->input('search');
@@ -61,6 +63,8 @@ class PayrollController extends Controller
 
     public function generate(Request $request, HrService $service)
     {
+        $this->authorize('generate', Payroll::class);
+
         $teamId = Auth::user()->current_team_id;
 
         $validated = $request->validate([
@@ -90,6 +94,8 @@ class PayrollController extends Controller
 
     public function markPaid(Request $request, Payroll $payroll, HrService $service)
     {
+        $this->authorize('pay', $payroll);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($payroll->team_id !== $teamId, 403);
 
@@ -113,6 +119,8 @@ class PayrollController extends Controller
 
     public function destroy(Payroll $payroll)
     {
+        $this->authorize('delete', $payroll);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($payroll->team_id !== $teamId, 403);
 

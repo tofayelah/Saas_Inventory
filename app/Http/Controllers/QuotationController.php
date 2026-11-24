@@ -19,6 +19,8 @@ class QuotationController extends Controller
 {
     public function index(Request $request)
     {
+        $this->authorize('viewAny', Quotation::class);
+
         $teamId = Auth::user()->current_team_id;
 
         $search = $request->input('search');
@@ -60,6 +62,8 @@ class QuotationController extends Controller
 
     public function create()
     {
+        $this->authorize('create', Quotation::class);
+
         $teamId = Auth::user()->current_team_id;
 
         $customers = Customer::where('team_id', $teamId)->where('is_active', true)->orderBy('name')->get();
@@ -108,6 +112,8 @@ class QuotationController extends Controller
 
     public function store(Request $request)
     {
+        $this->authorize('create', Quotation::class);
+
         $user = Auth::user();
         $teamId = $user->current_team_id;
 
@@ -202,6 +208,8 @@ class QuotationController extends Controller
 
     public function edit(Quotation $quotation)
     {
+        $this->authorize('update', $quotation);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($quotation->team_id !== $teamId, 403);
 
@@ -250,6 +258,8 @@ class QuotationController extends Controller
 
     public function update(Request $request, Quotation $quotation)
     {
+        $this->authorize('update', $quotation);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($quotation->team_id !== $teamId, 403);
 
@@ -315,6 +325,8 @@ class QuotationController extends Controller
 
     public function convert(Request $request, Quotation $quotation, SalesOrderService $salesOrderService)
     {
+        $this->authorize('convert', $quotation);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($quotation->team_id !== $teamId, 403);
 
@@ -353,6 +365,8 @@ class QuotationController extends Controller
 
     public function destroy(Quotation $quotation)
     {
+        $this->authorize('delete', $quotation);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($quotation->team_id !== $teamId, 403);
 

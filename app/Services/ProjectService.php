@@ -43,8 +43,8 @@ class ProjectService
                 $clientId = $client->id;
             }
 
-            // 2. Generate Project Code
-            $projectCode = $this->generateProjectCode($teamId);
+            // 2. Generate or adopt validated Project Code
+            $projectCode = !empty($data['project_code']) ? trim((string) $data['project_code']) : $this->generateProjectCode($teamId);
 
             // 3. Financial calculations
             $budget = max(0, (float) ($data['budget'] ?? 0));

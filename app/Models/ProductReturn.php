@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class ProductReturn extends Model
+class ProductReturn extends Model implements \App\Contracts\TenantAware
 {
     use HasFactory, BelongsToTenant;
 

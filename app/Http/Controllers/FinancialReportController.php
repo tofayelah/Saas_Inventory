@@ -17,6 +17,8 @@ class FinancialReportController extends Controller
      */
     public function trialBalance(Request $request, AccountingService $accountingService)
     {
+        $this->authorize('view-financial-reports');
+
         $teamId = Auth::user()->current_team_id;
         $asOfDate = $request->input('as_of_date', now()->toDateString());
 
@@ -33,6 +35,8 @@ class FinancialReportController extends Controller
      */
     public function profitAndLoss(Request $request, AccountingService $accountingService)
     {
+        $this->authorize('view-financial-reports');
+
         $teamId = Auth::user()->current_team_id;
         $startDate = $request->input('start_date', now()->startOfYear()->toDateString());
         $endDate = $request->input('end_date', now()->toDateString());
@@ -50,6 +54,8 @@ class FinancialReportController extends Controller
      */
     public function balanceSheet(Request $request, AccountingService $accountingService)
     {
+        $this->authorize('view-financial-reports');
+
         $teamId = Auth::user()->current_team_id;
         $asOfDate = $request->input('as_of_date', now()->toDateString());
 
@@ -66,6 +72,8 @@ class FinancialReportController extends Controller
      */
     public function generalLedger(Request $request, AccountingService $accountingService)
     {
+        $this->authorize('view-financial-reports');
+
         $teamId = Auth::user()->current_team_id;
 
         $accounts = ChartOfAccount::where('team_id', $teamId)->where('is_active', true)->orderBy('account_code')->get();
@@ -75,6 +83,8 @@ class FinancialReportController extends Controller
 
         $ledgerData = null;
         if ($selectedAccountId) {
+            $account = ChartOfAccount::where('team_id', $teamId)->findOrFail($selectedAccountId);
+            $this->authorize('view', $account);
             $ledgerData = $accountingService->getGeneralLedger($teamId, (int) $selectedAccountId, $startDate, $endDate);
         }
 
@@ -95,6 +105,8 @@ class FinancialReportController extends Controller
      */
     public function reconciliation(Request $request)
     {
+        $this->authorize('reconcile-financial-reports');
+
         $teamId = Auth::user()->current_team_id;
 
         $bankAccounts = ChartOfAccount::where('team_id', $teamId)
@@ -128,6 +140,8 @@ class FinancialReportController extends Controller
      */
     public function storeReconciliation(Request $request, AccountingService $accountingService)
     {
+        $this->authorize('reconcile-financial-reports');
+
         $teamId = Auth::user()->current_team_id;
 
         $validated = $request->validate([

@@ -24,6 +24,8 @@ class CustomerDueController extends Controller
 {
     public function index(Request $request)
     {
+        $this->authorize('viewAny', Customer::class);
+
         $teamId = Auth::user()->current_team_id;
 
         $search = $request->input('search', '');
@@ -100,6 +102,8 @@ class CustomerDueController extends Controller
 
     public function pay(Request $request, SalesOrderService $service)
     {
+        $this->authorize('create', SalesOrder::class);
+
         $teamId = Auth::user()->current_team_id;
 
         if (!$request->filled('financial_account_id')) {
@@ -221,6 +225,8 @@ class CustomerDueController extends Controller
 
     public function storeCustomer(Request $request)
     {
+        $this->authorize('create', Customer::class);
+
         $teamId = Auth::user()->current_team_id;
 
         $validated = $request->validate([
@@ -301,6 +307,8 @@ class CustomerDueController extends Controller
 
     public function updateCustomer(Request $request, Customer $customer)
     {
+        $this->authorize('update', $customer);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($customer->team_id !== $teamId, 403);
 

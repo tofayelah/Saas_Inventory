@@ -2,7 +2,50 @@
 
 namespace App\Providers;
 
+use App\Models\Brand;
+use App\Models\ChartOfAccount;
+use App\Models\Customer;
+use App\Models\DeliveryChallan;
+use App\Models\Employee;
+use App\Models\Expense;
+use App\Models\FinancialAccount;
+use App\Models\JournalEntry;
+use App\Models\Payroll;
+use App\Models\Product;
+use App\Models\ProductCategory;
+use App\Models\ProductReturn;
+use App\Models\ProductSerial;
+use App\Models\Project;
+use App\Models\PurchaseOrder;
+use App\Models\Quotation;
+use App\Models\SalesOrder;
+use App\Models\ServiceTicket;
 use App\Models\SiteSetting;
+use App\Models\Supplier;
+use App\Models\Team;
+use App\Models\Warehouse;
+use App\Policies\BrandPolicy;
+use App\Policies\ChartOfAccountPolicy;
+use App\Policies\CustomerPolicy;
+use App\Policies\DeliveryChallanPolicy;
+use App\Policies\EmployeePolicy;
+use App\Policies\ExpensePolicy;
+use App\Policies\FinancialAccountPolicy;
+use App\Policies\JournalEntryPolicy;
+use App\Policies\PayrollPolicy;
+use App\Policies\ProductCategoryPolicy;
+use App\Policies\ProductPolicy;
+use App\Policies\ProductReturnPolicy;
+use App\Policies\ProductSerialPolicy;
+use App\Policies\ProjectPolicy;
+use App\Policies\PurchaseOrderPolicy;
+use App\Policies\QuotationPolicy;
+use App\Policies\SalesOrderPolicy;
+use App\Policies\ServiceTicketPolicy;
+use App\Policies\SupplierPolicy;
+use App\Policies\TeamPolicy;
+use App\Policies\WarehousePolicy;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\View;
@@ -15,6 +58,13 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->singleton(\App\Services\TenantContext::class, function () {
+            return new \App\Services\TenantContext();
+        });
+        $this->app->singleton(\App\Services\TenantContextResolver::class, function () {
+            return new \App\Services\TenantContextResolver();
+        });
+
         if (file_exists(app_path('Helpers/NumberToWords.php'))) {
             require_once app_path('Helpers/NumberToWords.php');
         }
@@ -25,6 +75,77 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Queue Worker Lifecycle Tenant Isolation & Leakage Prevention (SEC-G4-PRI-05)
+        \Illuminate\Support\Facades\Queue::before(function () {
+            app(\App\Services\TenantContext::class)->clear();
+        });
+        \Illuminate\Support\Facades\Queue::after(function () {
+            app(\App\Services\TenantContext::class)->clear();
+        });
+        \Illuminate\Support\Facades\Queue::failing(function () {
+            app(\App\Services\TenantContext::class)->clear();
+        });
+        \Illuminate\Support\Facades\Queue::looping(function () {
+            app(\App\Services\TenantContext::class)->clear();
+        });
+
+        // Enforce Tenant-Bound Sanctum Personal Access Token Model (Gate 3)
+        \Laravel\Sanctum\Sanctum::usePersonalAccessTokenModel(\App\Models\Sanctum\PersonalAccessToken::class);
+
+        // Platform Super Admin pre-authorization bypass
+        Gate::before(function ($user, $ability, array $arguments = []) {
+            if ($user && method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
+                return true;
+            }
+
+            // Only allow tenant owner permission bypass when NO specific model instance is being authorized.
+            // This ensures model-level tenant isolation ($this->belongsToActiveTenant) is always enforced.
+            $hasModelInstance = false;
+            foreach ($arguments as $arg) {
+                if ($arg instanceof \Illuminate\Database\Eloquent\Model) {
+                    $hasModelInstance = true;
+                    break;
+                }
+            }
+
+            if (!$hasModelInstance && $user && method_exists($user, 'ownsTeam')) {
+                $tenant = app(\App\Services\TenantContext::class)->getTenant();
+                if ($tenant && $user->ownsTeam($tenant)) {
+                    return true;
+                }
+            }
+
+            return null;
+        });
+
+        // Register Policies for all Multi-Tenant Business Models
+        Gate::policy(Product::class, ProductPolicy::class);
+        Gate::policy(ProductCategory::class, ProductCategoryPolicy::class);
+        Gate::policy(Brand::class, BrandPolicy::class);
+        Gate::policy(Warehouse::class, WarehousePolicy::class);
+        Gate::policy(Customer::class, CustomerPolicy::class);
+        Gate::policy(Supplier::class, SupplierPolicy::class);
+        Gate::policy(PurchaseOrder::class, PurchaseOrderPolicy::class);
+        Gate::policy(SalesOrder::class, SalesOrderPolicy::class);
+        Gate::policy(Quotation::class, QuotationPolicy::class);
+        Gate::policy(DeliveryChallan::class, DeliveryChallanPolicy::class);
+        Gate::policy(ProductReturn::class, ProductReturnPolicy::class);
+        Gate::policy(ProductSerial::class, ProductSerialPolicy::class);
+        Gate::policy(ServiceTicket::class, ServiceTicketPolicy::class);
+        Gate::policy(Project::class, ProjectPolicy::class);
+        Gate::policy(Employee::class, EmployeePolicy::class);
+        Gate::policy(Payroll::class, PayrollPolicy::class);
+        Gate::policy(Expense::class, ExpensePolicy::class);
+        Gate::policy(FinancialAccount::class, FinancialAccountPolicy::class);
+        Gate::policy(ChartOfAccount::class, ChartOfAccountPolicy::class);
+        Gate::policy(JournalEntry::class, JournalEntryPolicy::class);
+        Gate::policy(Team::class, TeamPolicy::class);
+
+        // Dedicated Financial Report Authorization Gates (SEC-G2-02)
+        Gate::define('view-financial-reports', [\App\Policies\FinancialReportPolicy::class, 'viewReports']);
+        Gate::define('export-financial-reports', [\App\Policies\FinancialReportPolicy::class, 'exportReports']);
+        Gate::define('reconcile-financial-reports', [\App\Policies\FinancialReportPolicy::class, 'reconcile']);
+
         View::composer('*', function ($view) {
             $raw = [];
             try {

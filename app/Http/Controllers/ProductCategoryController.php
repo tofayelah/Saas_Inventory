@@ -14,6 +14,8 @@ class ProductCategoryController extends Controller
 {
     public function index(Request $request)
     {
+        $this->authorize('viewAny', ProductCategory::class);
+
         $teamId = Auth::user()->current_team_id;
         $search = trim($request->query('search', ''));
         $parentIdFilter = $request->query('parent_id');
@@ -73,6 +75,8 @@ class ProductCategoryController extends Controller
 
     public function store(Request $request)
     {
+        $this->authorize('create', ProductCategory::class);
+
         $teamId = Auth::user()->current_team_id;
 
         $validated = $request->validate([
@@ -108,6 +112,8 @@ class ProductCategoryController extends Controller
 
     public function update(Request $request, ProductCategory $category)
     {
+        $this->authorize('update', $category);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($category->team_id !== $teamId, 403);
 
@@ -140,6 +146,8 @@ class ProductCategoryController extends Controller
 
     public function destroy(ProductCategory $category)
     {
+        $this->authorize('delete', $category);
+
         $teamId = Auth::user()->current_team_id;
         abort_if($category->team_id !== $teamId, 403);
 
