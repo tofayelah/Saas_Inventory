@@ -46,7 +46,7 @@ return new class extends Migration
             $table->foreign(['team_id', 'segment_id'], 'fk_crm_campaigns_segment')
                 ->references(['team_id', 'id'])
                 ->on('crm_segments')
-                ->nullOnDelete();
+                ->restrictOnDelete();
         });
 
         Schema::create('crm_campaign_recipients', function (Blueprint $table) {
