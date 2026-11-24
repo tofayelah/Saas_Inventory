@@ -313,7 +313,10 @@ class ProjectCodeTenantUniquenessTest extends TestCase
         $this->assertNotContains('projects_project_code_unique', $namesCurrent);
 
         // 2. Rollback the migration
-        Artisan::call('migrate:rollback', ['--step' => 1]);
+        Artisan::call('migrate:rollback', [
+            '--path' => 'database/migrations/2026_11_23_162000_make_projects_project_code_composite_unique.php',
+            '--realpath' => false,
+        ]);
 
         // 3. Verify rolled back schema restores global unique index
         $indexesRollback = Schema::getIndexes('projects');
@@ -322,7 +325,10 @@ class ProjectCodeTenantUniquenessTest extends TestCase
         $this->assertNotContains('projects_team_code_unique', $namesRollback);
 
         // 4. Re-migrate to restore active state
-        Artisan::call('migrate');
+        Artisan::call('migrate', [
+            '--path' => 'database/migrations/2026_11_23_162000_make_projects_project_code_composite_unique.php',
+            '--realpath' => false,
+        ]);
         $indexesRestored = Schema::getIndexes('projects');
         $namesRestored = array_column($indexesRestored, 'name');
         $this->assertContains('projects_team_code_unique', $namesRestored);
