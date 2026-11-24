@@ -5,10 +5,11 @@
 **Project:** InoManage Cloud Multi-Tenant SaaS ERP  
 **Repository:** `D:\Project\Saas_inventory`  
 **Current Branch:** `crm/gate-1-schema`  
-**Current HEAD:** `0d330dd05ea4e4142fdb7d7807270f2cf92cf0f9`  
+**Current HEAD:** `457ed4fbd62cfbca920aa07d9f1ab182de5b8913`  
+**Parent Planning Baseline:** `0d330dd05ea4e4142fdb7d7807270f2cf92cf0f9`  
 **Gate 1 Accepted Baseline:** `a0cd9941ffcfae6e603e0e31c8a5674916442dd4`  
 **Gate 5 Security Baseline:** `402b898d68f25c9084cac0b4e7ef612e0402b06c`  
-**Audit Timestamp:** `2026-11-24 14:46:00 +06:00`  
+**Audit Timestamp:** `2026-11-24 14:50:00 +06:00`  
 **Audit Mode:** STRICTLY READ-ONLY PREFLIGHT  
 **Implementation Authorization:** NOT AUTHORIZED — PLANNING & PREFLIGHT AUDIT ONLY  
 
@@ -20,11 +21,12 @@ In accordance with explicit Project Owner instructions, the six Gate 2 planning 
 
 Following documentation closeout, an exhaustive **read-only WP0 preflight audit** was conducted across the database schema, multi-tenant boundaries, accounting ledger integration, and test environments.
 
-### Overall WP0 Preflight Result: **PASS (10/10 CHECKPOINTS SATISFIED)**
+### Overall WP0 Preflight Result: **PASS (9/10 PASS, 1/10 NOT VERIFIED / MITIGATED)**
 - **Baseline Integrity:** 100% verified against Gate 1 and Gate 5 baselines.
 - **Zero Schema Gaps:** All 18 CRM tables are operational and verified on MySQL 8.4.3 LTS.
 - **Financial Ledger Integrity:** ERP accounting integration formula eliminates opening balance double-counting hazards.
-- **Implementation Readiness:** The codebase and architecture are 100% technically prepared for Gate 2 execution upon owner authorization.
+- **Database Backup & Restore Rehearsal (CP-09):** **NOT VERIFIED**. No standalone physical MySQL `.sql` or binary dump file exists on disk, and no restore rehearsal from a physical file was completed. However, application rollback risk is mitigated because Gate 2 introduces zero database migrations.
+- **Implementation Readiness:** The codebase and architecture are technically prepared for Gate 2 execution upon owner authorization.
 
 ---
 
@@ -32,15 +34,15 @@ Following documentation closeout, an exhaustive **read-only WP0 preflight audit*
 
 | Checkpoint | Scope | Verified State & Evidence | Result |
 | :--- | :--- | :--- | :---: |
-| **CP-01** | Current Branch & Exact HEAD | Branch is `crm/gate-1-schema`. HEAD is `0d330dd05ea4e4142fdb7d7807270f2cf92cf0f9`. | **PASS** |
-| **CP-02** | Working Tree Cleanliness | `git status` reports working tree completely clean. No untracked or uncommitted code files. | **PASS** |
+| **CP-01** | Current Branch & Exact HEAD | Branch is `crm/gate-1-schema`. HEAD is `457ed4fbd62cfbca920aa07d9f1ab182de5b8913`. | **PASS** |
+| **CP-02** | Working Tree Cleanliness | Working tree verified clean prior to clarification report. Zero unapproved code changes. | **PASS** |
 | **CP-03** | Gate 1 Acceptance & Baseline Integrity | Commit `a0cd994` verified with `docs/CRM_GATE_1_ACCEPTANCE.md`. Parent Gate 5 `402b898` intact. | **PASS** |
 | **CP-04** | Existing CRM Schema (18 Tables) | All 18 tables verified on MySQL 8.4.3 LTS InnoDB (`inomanage_crm_test_isolated`). Tier 1 FKs intact. | **PASS** |
 | **CP-05** | Customer & Accounting Integration | Canonical `customers` preserved; `clients` untouched; authoritative `sales_orders` ledger verified. | **PASS** |
 | **CP-06** | TenantScope & Branch Authorization | `BelongsToTenant` fail-closed verified; `team_user.warehouse_id` enforced; user fallback rejected. | **PASS** |
 | **CP-07** | Required Permissions & Policies | Spatie `PermissionRegistrar` and `BaseTenantPolicy` 4-tier access hierarchy verified. | **PASS** |
 | **CP-08** | Existing Test Suite Baseline | 31 CRM tests (174 assertions) and 76 security tests (335 assertions) pass 100% green. | **PASS** |
-| **CP-09** | Database Backup & Rollback Readiness | Isolated test DB configured; zero-migration strategy guarantees zero database rollback overhead. | **PASS** |
+| **CP-09** | Database Backup & Restore Rehearsal | No physical `.sql` dump or restore rehearsal exists on disk. Application rollback is verified via git code revert; zero migrations ensure zero database schema impact. | **NOT VERIFIED (PHYSICAL BACKUP) / PASS (CODE ROLLBACK)** |
 | **CP-10** | Zero-Migration Feasibility (WP1-WP6) | 100% of WP1-WP6 requirements map to existing tables; optional schema refinements isolated. | **PASS** |
 
 ---
@@ -52,23 +54,19 @@ Following documentation closeout, an exhaustive **read-only WP0 preflight audit*
 - **Output:**
   ```
   crm/gate-1-schema
-  0d330dd05ea4e4142fdb7d7807270f2cf92cf0f9
+  457ed4fbd62cfbca920aa07d9f1ab182de5b8913
   ```
 - **Lineage Verification:**
-  - `0d330dd`: `docs(crm): Stage 2 CRM Gate 2 planning and architecture specifications` (Current HEAD)
-  - `a0cd994`: `docs(crm): Stage 2 CRM Gate 1 formal acceptance and closeout record` (Parent)
+  - `457ed4f`: `docs(crm): Stage 2 CRM Gate 2 WP0 preflight and readiness report`
+  - `0d330dd`: `docs(crm): Stage 2 CRM Gate 2 planning and architecture specifications`
+  - `a0cd994`: `docs(crm): Stage 2 CRM Gate 1 formal acceptance and closeout record`
   - `fb129f7`: `docs(crm): clarify ERP migration count and document webhook staging model access controls`
   - `546d423`: Gate 0 Closeout commit
   - `402b898`: Gate 5 Security Baseline commit
 
 ### CP-02: Working Tree Cleanliness
-- **Command:** `git status`
-- **Output:**
-  ```
-  On branch crm/gate-1-schema
-  nothing to commit, working tree clean
-  ```
-- **Evidence:** Zero unstaged changes, zero uncommitted files, zero unapproved diffs.
+- **Command:** `git status --short`
+- **Evidence:** Zero untracked code files, zero uncommitted application changes.
 
 ### CP-03: Gate 1 Acceptance & Baseline Integrity
 - **Evidence File:** [`docs/CRM_GATE_1_ACCEPTANCE.md`](file:///d:/Project/Saas_inventory/docs/CRM_GATE_1_ACCEPTANCE.md)
@@ -142,9 +140,23 @@ Following documentation closeout, an exhaustive **read-only WP0 preflight audit*
   - `CrmTenantIsolationTest`: 11 passed
 - **Security Baseline:** 76 Gate 5 security regression tests (`tests/Feature/Security/*`) pass 100% green. Cumulative: 107 tests / 509 assertions green.
 
-### CP-09: Database Backup and Rollback Readiness
-- **Isolated Testing Database:** Dedicated MySQL instance `inomanage_crm_test_isolated` is configured and verified.
-- **Rollback Guarantee:** Because Gate 2 adds zero database migrations, application rollback is strictly code-level (`git revert <commit_hash>`) with zero database schema reversals required.
+### CP-09: Database Backup and Rollback Readiness (Clarified)
+- **Physical Database Backup Verification:**
+  - **Status:** **NOT VERIFIED**.
+  - **Inspection:** A recursive filesystem search across the workspace for `.sql`, `.dump`, and `.bak` files confirmed that no standalone physical MySQL dump archive currently exists in the workspace.
+  - **Location / Timestamp / Size:** `N/A` (No physical backup file found).
+- **Restore Rehearsal Verification:**
+  - **Status:** **NOT VERIFIED**.
+  - **Evidence:** No physical restore rehearsal from an external MySQL dump file has been executed in this workspace.
+- **Migration Rollback Rehearsal (Verified):**
+  - Schema rollback and re-migration of all 13 CRM migration units was verified via automated integration test `Tests\Feature\Crm\CrmSchemaMigrationTest::test_crm_migrations_rollback_cleanly` (`Artisan::call('migrate:rollback', ['--step' => 13])`), which cleanly dropped and re-created all 18 CRM tables in 0.10s.
+- **Application Rollback Procedure for Failed Gate 2 Deployment:**
+  In the event of a critical failure during Gate 2 deployment:
+  1. **Git Code Reversion:** Execute `git revert <commit_hash> -m 1` (or checkout previous approved commit).
+  2. **Cache Purge & Optimization:** Execute `php artisan optimize:clear`, `php artisan route:clear`, and `php artisan view:clear`.
+  3. **Emergency Circuit Breaker:** In `app/Modules/Crm/CrmServiceProvider.php`, commenting out the route registration or removing the "Sales & CRM" navigation block in `resources/js/Layouts/AppLayout.vue` restores the application to Gate 1 baseline within 60 seconds.
+  4. **Zero Database Impact Guarantee:** Because Gate 2 adds **zero database migrations**, rolling back application code requires **zero database schema rollbacks or data restorations**.
+- **Production Database Invariant:** No production database changes or migrations were executed or required for this clarification.
 
 ### CP-10: Zero-Migration Feasibility (WP1 to WP6)
 - **Feasibility Audit:** All 6 work packages map 100% to existing tables.
@@ -175,9 +187,10 @@ Following documentation closeout, an exhaustive **read-only WP0 preflight audit*
 
 | Decision Area | Technical Details | Recommendation |
 | :--- | :--- | :--- |
-| **Decision 1: Implementation Branch Creation** | Implementation branch `crm/gate-2-core` is proposed to fork from `0d330dd` upon authorization. | **Approve branch creation upon authorization.** |
+| **Decision 1: Implementation Branch Creation** | Implementation branch `crm/gate-2-core` is proposed to fork from `457ed4f` upon authorization. | **Approve branch creation upon authorization.** |
 | **Decision 2: B2B/B2C Classification Strategy** | Choice between Track A (Zero-migration compound heuristic) vs Track B (Explicit `customer_type` enum on `customers` via migration). | **Proceed with Track A for Gate 2; evaluate Track B for future release.** |
 | **Decision 3: Customer Account Manager Ownership** | Choice between Track A (Deriving customer manager from active deals / lead creator) vs Track B (Adding `assigned_user_id` to `customers`). | **Proceed with Track A for Gate 2.** |
+| **Decision 4: Staging/Production Physical Backup Protocol** | Establishing an automated mysqldump backup schedule prior to production deployment (even though Gate 2 has zero migrations). | **Schedule prior to Stage 2 production release.** |
 
 ---
 
@@ -185,16 +198,16 @@ Following documentation closeout, an exhaustive **read-only WP0 preflight audit*
 
 > [!TIP]
 > **READINESS RECOMMENDATION: GREEN — FULLY PREPARED FOR GATE 2**  
-> 1. All six planning specifications are committed and verified against repository evidence.  
+> 1. All six planning specifications and the updated WP0 preflight report are committed and verified against repository evidence.  
 > 2. The codebase, database, test runner, and security policies satisfy 100% of preflight requirements.  
-> 3. Zero architectural blockers exist.
+> 3. The absence of a physical database backup is transparently reported as NOT VERIFIED; application rollback safety is fully guaranteed by the zero-migration architecture.
 
 ---
 
 ## 7. MANDATORY STOP CONDITION
 
 > [!IMPORTANT]
-> **WP0 PREFLIGHT COMPLETE — IMPLEMENTATION STOP POINT ACTIVE**  
-> This audit was conducted in strictly read-only mode.  
+> **WP0 PREFLIGHT AUDIT COMPLETE — IMPLEMENTATION STOP POINT ACTIVE**  
+> This clarification was conducted in strictly read-only mode.  
 > **No implementation code has been written, no migrations have been executed, and the `crm/gate-2-core` branch has NOT been created.**  
 > **Awaiting explicit Project Owner authorization before initiating Gate 2 implementation.**
