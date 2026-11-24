@@ -75,6 +75,7 @@ desktop.ini
 # Stage 2 CRM Architectural Specifications & Audits
 !docs/CRM_SYSTEM_DESIGN.md
 !docs/CRM_GATE_1_FINAL_AUDIT.md
+!docs/CRM_GATE_1_ACCEPTANCE.md
 !docs/crm/*.md
 !docs/crm/**/*.md
 docs/crm/*.rar
