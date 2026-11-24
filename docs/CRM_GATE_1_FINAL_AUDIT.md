@@ -114,6 +114,15 @@ Queried directly from `migrations` table in `inomanage_crm_test_isolated`:
 SELECT id, migration, batch FROM migrations ORDER BY id;
 ```
 
+#### Clarification on Existing ERP Migration Count (63 vs 64)
+- **Exact File Count:** There are **exactly 63** existing ERP migration files in `database/migrations/` prior to CRM Stage 2.
+- **Git Baseline Verification:** An inspection of both baseline commits (`402b898d68f25c9084cac0b4e7ef612e0402b06c` at Gate 5 release and `546d423fb94ca59bcdb5d8085c698b5e76754092` at Gate 0 closeout) confirms `git ls-tree` returns exactly 63 migration files.
+- **Discrepancy Explanation:** The occasional reference to "64" in preliminary narrative prose was an off-by-one clerical typo (conflating the 63rd migration index with the 14th rollback step calculation in `ProjectCodeTenantUniquenessTest`). The actual authoritative file count is, and has always been, **63**.
+- **Preservation Confirmation:** A byte-level diff against baseline parent commit `546d423` confirms that **zero** ERP migrations were deleted, renamed, or modified.
+- **Rollback Invariance:** When CRM Batch 2 is rolled back, the `migrations` table retains exactly 63 rows in Batch 1.
+
+The exact inventory of all 63 ERP migrations in Batch 1 followed by the 13 CRM migrations in Batch 2:
+
 ```
 +----+---------------------------------------------------------------------------------+-------+
 | id | migration                                                                       | batch |
@@ -346,6 +355,19 @@ HTTP controllers, routing middleware, and asynchronous queue workers belong to S
    - If not found, `$teamId = null`.
 5. **Queue Dispatch Prevention:**
    - Staged events where `team_id === null` remain in `pending` state for manual administrative reconciliation; no tenant-scoped worker is queued.
+
+### 4.3 Webhook Staging Model Access Control & Call-Site Audit
+**[VERIFIED BY SOURCE INSPECTION]**
+A repository-wide audit of all call sites (`git grep -n "CrmWebhookEvent" app/ routes/`) and table references (`git grep -n "crm_webhook_events" app/ routes/`) was executed:
+
+1. **Exclusive Internal Call Sites:**
+   The only call site in the entire application creating, reading, or querying `CrmWebhookEvent` is `App\Modules\Crm\Services\WebhookDeduplicationService` (Lines 7, 24, 28, 44, 45).
+2. **Zero Public or Tenant-Facing Routes:**
+   There are **zero** routes in `routes/` (web, api, or console) and **zero** controllers in `app/Http/Controllers/` that expose `CrmWebhookEvent` or `crm_webhook_events`. No external or authenticated user can query this staging table directly.
+3. **Unknown-Tenant Payload Protection:**
+   Unknown-tenant events are stored with `team_id = null`. Because all tenant-facing business queries route through tenant-scoped models (`CrmLead`, `CrmDeal`, `CrmMessage`, `CrmConversation`) that strictly enforce the global `TenantScope` (`WHERE team_id = ?`), records with `team_id = null` can never be selected or leaked in any tenant query.
+4. **No Implicit Tenant Scope Bypass:**
+   `CrmWebhookEvent` is an isolated data structure with no polymorphic relationships or join paths into tenant business tables. It cannot be used by any tenant to bypass tenant boundaries or inspect another tenant's raw payloads or headers.
 
 ---
 
