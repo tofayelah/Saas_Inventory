@@ -72,6 +72,13 @@ desktop.ini
 *.code-workspace
 *.md
 
+# Stage 2 CRM Architectural Specifications & Audits
+!docs/CRM_SYSTEM_DESIGN.md
+!docs/crm/*.md
+!docs/crm/**/*.md
+docs/crm/*.rar
+docs/crm/*.zip
+
 # Database Files & Dumps
 *.sql
 *.sqlite
