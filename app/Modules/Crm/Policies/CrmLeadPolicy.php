@@ -16,6 +16,7 @@ class CrmLeadPolicy extends BaseTenantPolicy
     {
         return $this->isOwner($user) ||
             $this->hasTenantPermission($user, 'crm.leads.view_all') ||
+            $this->hasTenantPermission($user, 'crm.leads.view_branch') ||
             $this->hasTenantPermission($user, 'crm.leads.view_assigned');
     }
 
@@ -42,6 +43,13 @@ class CrmLeadPolicy extends BaseTenantPolicy
         if ($membership && $membership->warehouse_id && $lead->warehouse_id) {
             if ((int) $lead->warehouse_id !== (int) $membership->warehouse_id) {
                 return false;
+            }
+        }
+
+        // Branch-wide view permission within their branch
+        if ($this->hasTenantPermission($user, 'crm.leads.view_branch')) {
+            if ($membership && $membership->warehouse_id) {
+                return (int) $lead->warehouse_id === (int) $membership->warehouse_id;
             }
         }
 

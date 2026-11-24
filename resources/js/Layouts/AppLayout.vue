@@ -463,6 +463,22 @@ onMounted(() => {
                             <span v-show="isSidebarExpanded" class="truncate">{{ t('Quotations & Estimates') }}</span>
                         </Link>
 
+                        <!-- CRM Leads -->
+                        <Link 
+                            :href="route('crm.leads.index')" 
+                            :title="!isSidebarExpanded ? t('CRM Leads') : ''"
+                            class="flex items-center rounded-xl text-xs font-semibold transition-all group overflow-hidden whitespace-nowrap"
+                            :class="[
+                                isSidebarExpanded ? 'gap-3 px-3.5 py-2.5' : 'justify-center p-2.5',
+                                route().current('crm.leads.*') ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30' : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-100'
+                            ]"
+                        >
+                            <svg class="w-4 h-4 text-amber-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                            </svg>
+                            <span v-show="isSidebarExpanded" class="truncate">{{ t('CRM Leads') }}</span>
+                        </Link>
+
                         <Link 
                             :href="route('sales.index')" 
                             :title="!isSidebarExpanded ? t('Sales & Dispatches') : ''"

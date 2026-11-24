@@ -382,6 +382,9 @@ Route::middleware([
         Route::delete('/settings/team/members/{user}', [TeamMemberController::class, 'removeMember'])->name('settings.team.members.remove');
         Route::get('/teams/{team}', [TeamMemberController::class, 'index'])->name('teams.show');
     });
+
+    // 14. CRM Subsystem Routes (Scoped within Authenticated Tenant Session)
+    require __DIR__ . '/crm.php';
 });
 
 // Platform Super-Admin Control Plane
