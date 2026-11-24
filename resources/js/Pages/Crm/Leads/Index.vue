@@ -378,6 +378,7 @@ function getSourceBadgeClass(src) {
                                                 <span>Convert to Customer</span>
                                             </button>
                                             <button
+                                                v-if="lead.status !== 'converted'"
                                                 type="button"
                                                 @click="confirmDelete(lead)"
                                                 class="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 transition text-left"

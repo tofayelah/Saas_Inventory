@@ -279,8 +279,16 @@ class CrmLeadController extends Controller
     {
         $this->authorize('delete', $lead);
 
+        $user = Auth::user();
+        $teamId = $user->current_team_id;
+
+        // Controller-level safeguard against converted lead deletion
+        if ($lead->status === 'converted' || $lead->converted_customer_id !== null) {
+            abort(422, "Converted lead [{$lead->lead_number}] cannot be deleted to preserve canonical customer provenance and audit records.");
+        }
+
         $leadNumber = $lead->lead_number;
-        $lead->delete();
+        $this->leadService->deleteLead($teamId, $lead);
 
         return redirect()->route('crm.leads.index')
             ->with('success', "Lead {$leadNumber} deleted successfully.");

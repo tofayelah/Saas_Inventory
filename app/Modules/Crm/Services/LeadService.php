@@ -258,6 +258,23 @@ class LeadService
     }
 
     /**
+     * Delete a Lead with strict tenant isolation and converted status safeguards.
+     * Prevents deletion of converted leads regardless of caller context.
+     */
+    public function deleteLead(int $teamId, CrmLead $lead): bool
+    {
+        if ((int) $lead->team_id !== $teamId) {
+            throw new TenantIsolationException("Lead does not belong to active tenant.");
+        }
+
+        if ($lead->status === 'converted' || $lead->converted_customer_id !== null) {
+            throw new \InvalidArgumentException("Converted lead [ID: {$lead->id}, {$lead->lead_number}] cannot be deleted as it is permanently linked to canonical customer [ID: {$lead->converted_customer_id}].");
+        }
+
+        return (bool) $lead->delete();
+    }
+
+    /**
      * Convert a prospective Lead into an ERP Customer cleanly with pessimistic row locking.
      * Prevents race conditions and duplicate customer creation under concurrent requests.
      */

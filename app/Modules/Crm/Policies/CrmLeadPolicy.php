@@ -10,6 +10,20 @@ use App\Policies\BaseTenantPolicy;
 class CrmLeadPolicy extends BaseTenantPolicy
 {
     /**
+     * Pre-authorization checks.
+     * Enforces that converted lead deletion is strictly forbidden for all actors,
+     * including super admins and owners, to preserve canonical customer provenance.
+     */
+    public function before(User $user, string $ability): ?bool
+    {
+        if ($ability === 'delete') {
+            return null; // Always evaluate delete() method to enforce converted lead invariant
+        }
+
+        return parent::before($user, $ability);
+    }
+
+    /**
      * Determine whether the user can view any leads.
      */
     public function viewAny(User $user): bool
@@ -95,10 +109,16 @@ class CrmLeadPolicy extends BaseTenantPolicy
 
     /**
      * Determine whether the user can delete the lead.
+     * Converted leads cannot be deleted under any circumstance.
      */
     public function delete(User $user, CrmLead $lead): bool
     {
         if (!$this->belongsToActiveTenant($user, $lead)) {
+            return false;
+        }
+
+        // Hardening invariant: Converted leads can NEVER be deleted regardless of owner status or permissions
+        if ($lead->status === 'converted' || $lead->converted_customer_id !== null) {
             return false;
         }
 

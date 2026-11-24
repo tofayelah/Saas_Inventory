@@ -114,6 +114,7 @@ function getStatusBadgeClass(leadStatus) {
                     </Link>
 
                     <button
+                        v-if="lead.status !== 'converted'"
                         type="button"
                         @click="isDeleteModalOpen = true"
                         class="p-2 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-600 transition"

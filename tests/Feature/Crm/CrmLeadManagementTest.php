@@ -555,4 +555,194 @@ class CrmLeadManagementTest extends TestCase
             'name' => 'Rafiq Ahmed',
         ]);
     }
+
+    public function test_tenant_owner_cannot_delete_converted_lead(): void
+    {
+        $customer = Customer::forceCreate([
+            'team_id' => $this->tenantA->id,
+            'name' => 'Protected Converted Customer',
+            'is_active' => true,
+        ]);
+
+        $convertedLead = CrmLead::forceCreate([
+            'team_id' => $this->tenantA->id,
+            'lead_number' => 'LEAD-202611-0901',
+            'title' => 'Protected Converted Lead',
+            'status' => 'converted',
+            'converted_customer_id' => $customer->id,
+            'converted_at' => now(),
+            'source' => 'manual',
+            'warehouse_id' => $this->warehouseAlpha->id,
+        ]);
+
+        // Attempt deletion as Tenant Owner
+        $response = $this->actingAs($this->ownerA)->delete(route('crm.leads.destroy', $convertedLead->id));
+
+        // Policy / Controller blocks with 403 Forbidden or 422 Unprocessable
+        $this->assertTrue(in_array($response->status(), [403, 422]));
+
+        // Assert lead and customer remain untouched
+        $this->assertDatabaseHas('crm_leads', ['id' => $convertedLead->id]);
+        $this->assertDatabaseHas('customers', ['id' => $customer->id]);
+    }
+
+    public function test_user_with_crm_leads_delete_permission_cannot_delete_converted_lead(): void
+    {
+        setPermissionsTeamId($this->tenantA->id);
+        $role = \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'lead_admin', 'team_id' => $this->tenantA->id]);
+        $permission = \Spatie\Permission\Models\Permission::firstOrCreate(['name' => 'crm.leads.delete']);
+        $role->givePermissionTo($permission);
+        $this->staffA->assignRole($role);
+
+        $customer = Customer::forceCreate([
+            'team_id' => $this->tenantA->id,
+            'name' => 'Valued Converted Client',
+            'is_active' => true,
+        ]);
+
+        $convertedLead = CrmLead::forceCreate([
+            'team_id' => $this->tenantA->id,
+            'lead_number' => 'LEAD-202611-0902',
+            'title' => 'Enterprise Converted Lead',
+            'status' => 'converted',
+            'converted_customer_id' => $customer->id,
+            'converted_at' => now(),
+            'source' => 'manual',
+            'warehouse_id' => $this->warehouseAlpha->id,
+        ]);
+
+        $response = $this->actingAs($this->staffA)->delete(route('crm.leads.destroy', $convertedLead->id));
+
+        $this->assertTrue(in_array($response->status(), [403, 422]));
+        $this->assertDatabaseHas('crm_leads', ['id' => $convertedLead->id]);
+        $this->assertDatabaseHas('customers', ['id' => $customer->id]);
+    }
+
+    public function test_direct_controller_deletion_request_on_converted_lead_is_rejected(): void
+    {
+        $customer = Customer::forceCreate([
+            'team_id' => $this->tenantA->id,
+            'name' => 'Direct Controller Customer',
+            'is_active' => true,
+        ]);
+
+        $convertedLead = CrmLead::forceCreate([
+            'team_id' => $this->tenantA->id,
+            'lead_number' => 'LEAD-202611-0903',
+            'title' => 'Direct Controller Lead',
+            'status' => 'converted',
+            'converted_customer_id' => $customer->id,
+            'converted_at' => now(),
+            'source' => 'manual',
+            'warehouse_id' => $this->warehouseAlpha->id,
+        ]);
+
+        $response = $this->actingAs($this->ownerA)->delete(route('crm.leads.destroy', $convertedLead->id));
+
+        $this->assertTrue(in_array($response->status(), [403, 422]));
+        $this->assertDatabaseHas('crm_leads', ['id' => $convertedLead->id]);
+    }
+
+    public function test_direct_service_deletion_invocation_on_converted_lead_throws_exception(): void
+    {
+        $leadService = app(\App\Modules\Crm\Services\LeadService::class);
+
+        $customer = Customer::forceCreate([
+            'team_id' => $this->tenantA->id,
+            'name' => 'Service Protection Customer',
+            'is_active' => true,
+        ]);
+
+        $convertedLead = CrmLead::forceCreate([
+            'team_id' => $this->tenantA->id,
+            'lead_number' => 'LEAD-202611-0904',
+            'title' => 'Service Protection Lead',
+            'status' => 'converted',
+            'converted_customer_id' => $customer->id,
+            'converted_at' => now(),
+            'source' => 'manual',
+            'warehouse_id' => $this->warehouseAlpha->id,
+        ]);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/cannot be deleted as it is permanently linked to canonical customer/');
+
+        $leadService->deleteLead($this->tenantA->id, $convertedLead);
+
+        // Verify lead is not deleted
+        $this->assertDatabaseHas('crm_leads', ['id' => $convertedLead->id]);
+    }
+
+    public function test_unauthorized_user_cannot_delete_unconverted_lead(): void
+    {
+        // repA has no crm.leads.delete permission and is not owner
+        $lead = CrmLead::forceCreate([
+            'team_id' => $this->tenantA->id,
+            'lead_number' => 'LEAD-202611-0905',
+            'title' => 'Active Unconverted Lead',
+            'status' => 'new',
+            'source' => 'manual',
+            'warehouse_id' => $this->warehouseAlpha->id,
+        ]);
+
+        $response = $this->actingAs($this->repA)->delete(route('crm.leads.destroy', $lead->id));
+
+        $this->assertEquals(403, $response->status());
+        $this->assertDatabaseHas('crm_leads', ['id' => $lead->id]);
+    }
+
+    public function test_cross_tenant_deletion_remains_blocked(): void
+    {
+        // Lead in Tenant B
+        $leadB = CrmLead::forceCreate([
+            'team_id' => $this->tenantB->id,
+            'lead_number' => 'LEAD-202611-0906',
+            'title' => 'Tenant B Lead to Attempt Delete',
+            'status' => 'new',
+            'source' => 'manual',
+            'warehouse_id' => $this->warehouseOtherTenant->id,
+        ]);
+
+        // Owner of Tenant A attempts delete
+        $response = $this->actingAs($this->ownerA)->delete(route('crm.leads.destroy', $leadB->id));
+
+        $this->assertTrue(in_array($response->status(), [403, 404]));
+        $this->assertDatabaseHas('crm_leads', ['id' => $leadB->id, 'team_id' => $this->tenantB->id]);
+    }
+
+    public function test_rejected_deletion_leaves_lead_and_canonical_customer_unchanged(): void
+    {
+        $customer = Customer::forceCreate([
+            'team_id' => $this->tenantA->id,
+            'name' => 'Untouched Canonical Customer',
+            'phone' => '+8801799887766',
+            'email' => 'untouched@example.com',
+            'is_active' => true,
+        ]);
+
+        $lead = CrmLead::forceCreate([
+            'team_id' => $this->tenantA->id,
+            'lead_number' => 'LEAD-202611-0907',
+            'title' => 'Untouched Converted Lead',
+            'status' => 'converted',
+            'converted_customer_id' => $customer->id,
+            'converted_at' => now()->subDays(5),
+            'source' => 'website',
+            'warehouse_id' => $this->warehouseAlpha->id,
+        ]);
+
+        $origConvertedAt = $lead->converted_at->toDateTimeString();
+
+        $response = $this->actingAs($this->ownerA)->delete(route('crm.leads.destroy', $lead->id));
+        $this->assertTrue(in_array($response->status(), [403, 422]));
+
+        $lead->refresh();
+        $this->assertEquals('converted', $lead->status);
+        $this->assertEquals($customer->id, $lead->converted_customer_id);
+        $this->assertEquals($origConvertedAt, $lead->converted_at->toDateTimeString());
+
+        $customer->refresh();
+        $this->assertEquals('Untouched Canonical Customer', $customer->name);
+        $this->assertEquals('+8801799887766', $customer->phone);
+    }
 }
