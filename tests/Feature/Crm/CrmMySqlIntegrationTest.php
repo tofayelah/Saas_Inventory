@@ -131,7 +131,15 @@ class CrmMySqlIntegrationTest extends TestCase
      */
     public function test_mysql_target_engine_version_and_table_engines(): void
     {
-        $version = DB::connection($this->mysqlConnection)->selectOne('SELECT VERSION() as ver')->ver;
+        $connection = DB::connection($this->mysqlConnection);
+        $driver = $connection->getDriverName();
+        $this->assertEquals('mysql', $driver, "Database driver must be strictly 'mysql' (actual: {$driver})");
+        $this->assertTrue($connection->getDriverName() === 'mysql', 'DB::connection()->getDriverName() must strictly equal mysql');
+
+        $databaseName = $connection->getDatabaseName();
+        $this->assertEquals('inomanage_crm_test_isolated', $databaseName, 'Database name must be inomanage_crm_test_isolated');
+
+        $version = $connection->selectOne('SELECT VERSION() as ver')->ver;
         $this->assertStringStartsWith('8.4.', $version, "Target database must be MySQL 8.4.x (actual: {$version})");
 
         $tables = DB::connection($this->mysqlConnection)->select("
